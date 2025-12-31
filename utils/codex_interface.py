@@ -19,27 +19,43 @@ class CodexCodeInterface:
             )
 
     def execute_code_cli(self, prompt: str, cwd: str, model: str = None) -> Dict[str, any]:
-        """Execute Codex via CLI and capture the response."""
+        """Execute Codex via CLI and capture the response.
+        
+        Uses 'codex exec' command for non-interactive execution, which is the
+        recommended way to run Codex CLI programmatically.
+        """
         try:
             original_cwd = os.getcwd()
             os.chdir(cwd)
-            cmd = ["codex"]
+            
+            # Use 'exec' subcommand for non-interactive execution
+            cmd = ["codex", "exec"]
             if model:
                 cmd.extend(["--model", model])
+            
+            # Add convenience flags for automatic execution
+            # --full-auto: low-friction sandboxed automatic execution
+            cmd.append("--full-auto")
+            
+            # Execute codex exec with the prompt via stdin
             result = subprocess.run(
                 cmd,
                 input=prompt,
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=600,  # 10 minute timeout
+                cwd=cwd
             )
+            
             os.chdir(original_cwd)
+            
             return {
                 "success": result.returncode == 0,
                 "stdout": result.stdout,
                 "stderr": result.stderr,
                 "returncode": result.returncode,
             }
+                
         except subprocess.TimeoutExpired:
             os.chdir(original_cwd)
             return {
