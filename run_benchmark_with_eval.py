@@ -16,7 +16,7 @@ import jsonlines
 from datasets import load_dataset
 
 class EnhancedBenchmarkRunner:
-    def __init__(self, model=None, backend="claude"):
+    def __init__(self, model=None, backend="claude", longcodebench=False, context_length=None):
         self.base_dir = Path.cwd()
         self.log_file = self.base_dir / "benchmark_scores.log"
         self.predictions_dir = self.base_dir / "predictions"
@@ -24,6 +24,8 @@ class EnhancedBenchmarkRunner:
         self.eval_results_dir = self.base_dir / "evaluation_results"
         self.model = model
         self.backend = backend
+        self.longcodebench = longcodebench
+        self.context_length = context_length
         
         # Create directories
         self.predictions_dir.mkdir(exist_ok=True)
@@ -78,6 +80,12 @@ class EnhancedBenchmarkRunner:
 
         if self.model:
             cmd.extend(["--model", self.model])
+        
+        if self.longcodebench:
+            cmd.append("--longcodebench")
+        
+        if self.context_length is not None:
+            cmd.extend(["--context-length", str(self.context_length)])
         
         try:
             start_time = time.time()
@@ -255,10 +263,17 @@ def main():
                        help="Max parallel Docker containers for evaluation (default: 2)")
     parser.add_argument("--notes", default="",
                        help="Optional notes about this run")
+    parser.add_argument("--longcodebench", action="store_true",
+                       help="Explicitly indicate this is a LongCodeBench dataset")
+    parser.add_argument("--context-length", type=int, metavar="K",
+                       help="Context length (k value) for LongCodeBench datasets")
     
     args = parser.parse_args()
     
-    runner = EnhancedBenchmarkRunner()
+    runner = EnhancedBenchmarkRunner(
+        longcodebench=args.longcodebench,
+        context_length=args.context_length
+    )
     
     print("="*60)
     print("Enhanced SWE-bench Benchmark Runner")

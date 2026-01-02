@@ -1,6 +1,7 @@
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, List
+from .longcodebench_loader import has_context_files, get_context_files
 
 class PromptFormatter:
     """Format SWE-bench issues into prompts for Claude Code."""
@@ -69,6 +70,17 @@ Base directory: {base_path}
         # Add any hints if available
         if "hints_text" in instance and instance["hints_text"]:
             prompt += f"\n\nHints:\n{instance['hints_text']}"
+        
+        # Add context files if available (LongCodeBench feature)
+        if has_context_files(instance):
+            context_files = get_context_files(instance)
+            if context_files:
+                prompt += f"\n\nRelevant Context Files (provided for reference):\n"
+                for i, file_path in enumerate(context_files, 1):
+                    prompt += f"{i}. {file_path}\n"
+                prompt += "\nNote: These files have been identified as relevant to this issue. "
+                prompt += "You may want to examine them, but you should still search the codebase "
+                prompt += "to ensure you have a complete understanding of the problem."
             
         return prompt
     

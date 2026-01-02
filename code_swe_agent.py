@@ -25,6 +25,11 @@ from utils.cline_interface import ClineCodeInterface
 from utils.prompt_formatter import PromptFormatter
 from utils.patch_extractor import PatchExtractor
 from utils.model_registry import get_model_name
+from utils.longcodebench_loader import (
+    is_longcodebench_dataset,
+    load_longcodebench_dataset,
+    extract_context_length
+)
 
 
 DEFAULT_BACKEND = os.environ.get("CODE_SWE_BACKEND", "claude")
@@ -35,7 +40,9 @@ class CodeSWEAgent:
 
     def __init__(self, prompt_template: Optional[str] = None,
                  model: Optional[str] = None,
-                 backend: str = DEFAULT_BACKEND):
+                 backend: str = DEFAULT_BACKEND,
+                 longcodebench: bool = False,
+                 context_length: Optional[int] = None):
         self.backend = (backend or DEFAULT_BACKEND).lower()
         if self.backend == "codex":
             self.interface = CodexCodeInterface()
@@ -56,6 +63,10 @@ class CodeSWEAgent:
         # Resolve model name from alias
         self.model = get_model_name(model, self.backend) if model else None
         self.model_alias = model  # Keep original alias for logging
+
+        # LongCodeBench support
+        self.longcodebench = longcodebench
+        self.context_length = context_length
 
         # Create directories if they don't exist
         self.results_dir.mkdir(exist_ok=True)
@@ -207,7 +218,23 @@ class CodeSWEAgent:
                       limit: Optional[int] = None) -> List[Dict]:
         """Run on a full dataset."""
         print(f"Loading dataset: {dataset_name}")
-        dataset = load_dataset(dataset_name, split=split)
+        
+        # Check if this is a LongCodeBench dataset
+        is_longcodebench = self.longcodebench or is_longcodebench_dataset(dataset_name)
+        
+        if is_longcodebench:
+            print("Detected LongCodeBench dataset")
+            # Use LongCodeBench loader
+            context_length = self.context_length
+            if context_length is None:
+                # Try to extract from dataset name
+                context_length = extract_context_length(dataset_name)
+            if context_length:
+                print(f"Using context length: k={context_length}")
+            dataset = load_longcodebench_dataset(dataset_name, split=split, context_length=context_length)
+        else:
+            # Standard SWE-bench dataset
+            dataset = load_dataset(dataset_name, split=split)
         
         if limit:
             dataset = dataset.select(range(min(limit, len(dataset))))
@@ -237,7 +264,16 @@ class CodeSWEAgent:
     
     def run_on_instance(self, instance_id: str, dataset_name: str = "princeton-nlp/SWE-bench_Lite") -> Dict:
         """Run on a single instance by ID."""
-        dataset = load_dataset(dataset_name, split="test")
+        # Check if this is a LongCodeBench dataset
+        is_longcodebench = self.longcodebench or is_longcodebench_dataset(dataset_name)
+        
+        if is_longcodebench:
+            context_length = self.context_length
+            if context_length is None:
+                context_length = extract_context_length(dataset_name)
+            dataset = load_longcodebench_dataset(dataset_name, split="test", context_length=context_length)
+        else:
+            dataset = load_dataset(dataset_name, split="test")
         
         # Find the instance
         instance = None
@@ -275,6 +311,10 @@ def main():
                        help="Model to use (e.g., opus-4.1, codex-4.2, or any name)")
     parser.add_argument("--backend", type=str, choices=["claude", "codex", "gemini", "cline"],
                        help="Code model backend to use")
+    parser.add_argument("--longcodebench", action="store_true",
+                       help="Explicitly indicate this is a LongCodeBench dataset")
+    parser.add_argument("--context-length", type=int, metavar="K",
+                       help="Context length (k value) for LongCodeBench datasets")
     
     args = parser.parse_args()
     
@@ -299,7 +339,13 @@ def main():
         print("Error: CLI not found. Please ensure it is installed and in PATH")
         sys.exit(1)
 
-    agent = CodeSWEAgent(args.prompt_template, args.model, backend)
+    agent = CodeSWEAgent(
+        args.prompt_template,
+        args.model,
+        backend,
+        longcodebench=args.longcodebench if hasattr(args, 'longcodebench') else False,
+        context_length=args.context_length if hasattr(args, 'context_length') else None
+    )
     
     # Run on specific instance or dataset
     if args.instance_id:

@@ -35,6 +35,9 @@ python swe_bench.py check
 
 # 3. Try a larger test when ready (10 instances, ~2 hours)
 python swe_bench.py quick
+
+# 4. Run LongCodeBench dataset (tunable SWE-bench with context files)
+python swe_bench.py run --dataset <longcodebench-dataset-name> --longcodebench --limit 10
 ```
 
 
@@ -143,6 +146,10 @@ python swe_bench.py run --model best --quick       # Best performance alias
 python swe_bench.py run --quick --no-eval          # Skip Docker evaluation
 python swe_bench.py run --limit 20 --max-workers 4 # More parallel containers
 
+# LongCodeBench support (tunable SWE-bench with context files)
+python swe_bench.py run --dataset <longcodebench-dataset> --longcodebench --limit 10
+python swe_bench.py run --dataset <longcodebench-dataset> --longcodebench --context-length 20 --limit 10
+
 # Dataset selection
 python swe_bench.py run --dataset princeton-nlp/SWE-bench_Lite --limit 10
 ```
@@ -242,6 +249,50 @@ python swe_bench.py list-models
 
 You can also use any model name accepted by Claude's `/model` command, including experimental or future models not yet in the registry.
 
+## LongCodeBench Support
+
+This project now supports **LongCodeBench** tunable SWE-bench datasets, which include pre-selected context files for different context lengths (k values). This allows you to evaluate models at varying context window sizes.
+
+### What is LongCodeBench?
+
+LongCodeBench is a variant of SWE-bench where each problem statement is provided with a varying number of context files (k files). This enables testing models' coding capabilities at different context lengths, from small (k=5) to large (k=100+).
+
+### Using LongCodeBench Datasets
+
+```bash
+# Run with LongCodeBench dataset (auto-detected by dataset name)
+python swe_bench.py run --dataset <longcodebench-dataset-name> --limit 10
+
+# Explicitly specify LongCodeBench mode
+python swe_bench.py run --dataset <longcodebench-dataset-name> --longcodebench --limit 10
+
+# Specify context length (k value) if dataset has multiple k values
+python swe_bench.py run --dataset <longcodebench-dataset-name> --longcodebench --context-length 20 --limit 10
+
+# With specific backend and model
+python swe_bench.py run --dataset <longcodebench-dataset-name> --longcodebench --backend cline --model opus-4.1 --limit 10
+```
+
+### How It Works
+
+1. **Automatic Detection**: The system automatically detects LongCodeBench datasets by their name patterns (e.g., containing "longcodebench" or "swebench-tuned").
+
+2. **Context Files**: When a LongCodeBench instance contains `context_files`, these are automatically included in the prompt to guide the model.
+
+3. **Backward Compatibility**: Standard SWE-bench datasets continue to work exactly as before.
+
+### Finding LongCodeBench Datasets
+
+LongCodeBench datasets are typically available on HuggingFace. Look for datasets with names like:
+- `Zteefano/longcodebench-swebench-tuned-k20`
+- Or similar naming patterns
+
+### Notes
+
+- Context files are provided as hints but models can still search the codebase independently
+- Different context lengths may affect processing time and API costs
+- Evaluation uses the same SWE-bench harness, ensuring compatibility
+
 ## Understanding Scores
 
 ### Two Types of Scores
@@ -287,7 +338,8 @@ claudecode_n_codex_swebench/
 │   ├── claude_interface.py  # Claude Code CLI interface
 │   ├── prompt_formatter.py  # Formats issues into prompts
 │   ├── patch_extractor.py   # Extracts patches from responses
-│   └── model_registry.py    # Model definitions and aliases
+│   ├── model_registry.py    # Model definitions and aliases
+│   └── longcodebench_loader.py  # LongCodeBench dataset loader
 │
 ├── prompts/                  # Prompt templates
 │   ├── swe_bench_prompt.txt # Default prompt

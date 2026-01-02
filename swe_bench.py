@@ -40,6 +40,8 @@ def run_command(args):
     runner = EnhancedBenchmarkRunner(
         model=args.model if hasattr(args, 'model') else None,
         backend=args.backend if hasattr(args, 'backend') and args.backend else DEFAULT_BACKEND,
+        longcodebench=args.longcodebench if hasattr(args, 'longcodebench') else False,
+        context_length=args.context_length if hasattr(args, 'context_length') else None,
     )
     
     # Set default limit if not specified
@@ -66,6 +68,10 @@ def run_command(args):
         model_name = get_model_name(args.model, runner.backend) if args.model else None
         print(f"Model: {args.model} -> {model_name}")
     print(f"Backend: {runner.backend}")
+    if hasattr(args, 'longcodebench') and args.longcodebench:
+        print(f"LongCodeBench: Enabled")
+        if hasattr(args, 'context_length') and args.context_length:
+            print(f"Context Length: k={args.context_length}")
     print(f"Evaluation: {'DISABLED' if args.no_eval else 'ENABLED'}")
     print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
@@ -376,6 +382,8 @@ Examples:
     run_parser.add_argument('--notes', default='', help='Optional notes about this run')
     run_parser.add_argument('--model', type=str, help='Model to use (e.g., opus-4.1, codex-4.2)')
     run_parser.add_argument('--backend', type=str, choices=['claude', 'codex', 'gemini', 'cline'], help='Code model backend')
+    run_parser.add_argument('--longcodebench', action='store_true', help='Explicitly indicate this is a LongCodeBench dataset')
+    run_parser.add_argument('--context-length', type=int, metavar='K', help='Context length (k value) for LongCodeBench datasets')
     
     # EVAL command
     eval_parser = subparsers.add_parser('eval', help='Evaluate past predictions')
