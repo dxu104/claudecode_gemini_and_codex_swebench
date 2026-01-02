@@ -46,7 +46,7 @@ class ClineCodeInterface:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=1800,  # 30 minutes - Cline may need more time for complex tasks
             )
 
             os.chdir(original_cwd)
@@ -56,12 +56,20 @@ class ClineCodeInterface:
                 "stderr": result.stderr,
                 "returncode": result.returncode,
             }
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             os.chdir(original_cwd)
+            # Try to get partial output if available
+            partial_stdout = getattr(e, 'stdout', '') or ''
+            partial_stderr = getattr(e, 'stderr', '') or ''
+            
+            timeout_msg = "Command timed out after 30 minutes"
+            if partial_stdout or partial_stderr:
+                timeout_msg += f". Partial output - stdout: {len(partial_stdout)} chars, stderr: {len(partial_stderr)} chars"
+            
             return {
                 "success": False,
-                "stdout": "",
-                "stderr": "Command timed out after 10 minutes",
+                "stdout": partial_stdout,
+                "stderr": timeout_msg + (f"\nPartial stderr: {partial_stderr[:500]}" if partial_stderr else ""),
                 "returncode": -1,
             }
         except Exception as e:
