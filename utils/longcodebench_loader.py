@@ -28,6 +28,7 @@ def is_longcodebench_dataset(dataset_name: str) -> bool:
     patterns = [
         r'longcodebench',
         r'long-code-bench',
+        r'\blcb\b',  # Match "LCB" as a word (e.g., "Steefano/LCB")
         r'swebench.*tuned',
         r'swebench.*k\d+',
     ]
@@ -235,12 +236,19 @@ def load_longcodebench_from_zip(
         dataset_dict = load_dataset('arrow', data_files=arrow_file_pattern)
         
         # 从 dataset_dict 中获取实际的 split（使用 actual_split，因为我们已经确定了）
+        # 注意：load_dataset 可能返回的 split 名称与文件路径中的不同
         if actual_split in dataset_dict:
             dataset = dataset_dict[actual_split]
         elif 'train' in dataset_dict:
+            # 如果请求的 split 不存在，但 train 存在，使用 train
+            if actual_split != 'train':
+                print(f"Note: Split '{actual_split}' not found. Using 'train' instead.")
             dataset = dataset_dict['train']
         elif len(dataset_dict) == 1:
             # 如果只有一个 split，直接使用它
+            loaded_split = list(dataset_dict.keys())[0]
+            if loaded_split != actual_split:
+                print(f"Note: Split '{actual_split}' not found. Using '{loaded_split}' instead.")
             dataset = list(dataset_dict.values())[0]
         else:
             available = list(dataset_dict.keys())
