@@ -93,3 +93,16 @@ pip-delete-this-directory.txt
 pip-log.txt
 pip-wheel-metadata/
 venv
+
+# LongCodeBench test files
+check_longcodebench.py
+test_lcb_loader.py
+
+# Runtime results (already should be ignored, but ensure)
+evaluation_results/
+predictions/
+results/
+logs/
+
+# Test scripts
+hello_world.sh
