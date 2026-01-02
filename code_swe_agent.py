@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SWE-bench agent capable of using Claude Code or Codex backends.
+SWE-bench agent capable of using Claude Code, Codex, Gemini, or Cline backends.
 """
 
 import argparse
@@ -21,6 +21,7 @@ import jsonlines
 from utils.claude_interface import ClaudeCodeInterface
 from utils.codex_interface import CodexCodeInterface
 from utils.gemini_interface import GeminiCodeInterface
+from utils.cline_interface import ClineCodeInterface
 from utils.prompt_formatter import PromptFormatter
 from utils.patch_extractor import PatchExtractor
 from utils.model_registry import get_model_name
@@ -40,6 +41,8 @@ class CodeSWEAgent:
             self.interface = CodexCodeInterface()
         elif self.backend == "gemini":
             self.interface = GeminiCodeInterface()
+        elif self.backend == "cline":
+            self.interface = ClineCodeInterface()
         else:
             self.backend = "claude"
             self.interface = ClaudeCodeInterface()
@@ -270,7 +273,7 @@ def main():
                        help="Path to custom prompt template")
     parser.add_argument("--model", type=str,
                        help="Model to use (e.g., opus-4.1, codex-4.2, or any name)")
-    parser.add_argument("--backend", type=str, choices=["claude", "codex", "gemini"],
+    parser.add_argument("--backend", type=str, choices=["claude", "codex", "gemini", "cline"],
                        help="Code model backend to use")
     
     args = parser.parse_args()
@@ -279,19 +282,21 @@ def main():
 
     # Check if selected CLI is available
     if backend == "codex":
-        cli_cmd = "codex"
+        cli_version_cmd = ["codex", "--version"]
     elif backend == "gemini":
-        cli_cmd = "gemini"
+        cli_version_cmd = ["gemini", "--version"]
+    elif backend == "cline":
+        cli_version_cmd = ["cline", "version"]
     else:
-        cli_cmd = "claude"
+        cli_version_cmd = ["claude", "--version"]
 
     try:
-        result = subprocess.run([cli_cmd, "--version"], capture_output=True, text=True)
+        result = subprocess.run(cli_version_cmd, capture_output=True, text=True)
         if result.returncode != 0:
-            print(f"Error: {cli_cmd} CLI not found. Please ensure '{cli_cmd}' is installed and in PATH")
+            print("Error: CLI not found. Please ensure it is installed and in PATH")
             sys.exit(1)
     except FileNotFoundError:
-        print(f"Error: {cli_cmd} CLI not found. Please ensure '{cli_cmd}' is installed and in PATH")
+        print("Error: CLI not found. Please ensure it is installed and in PATH")
         sys.exit(1)
 
     agent = CodeSWEAgent(args.prompt_template, args.model, backend)

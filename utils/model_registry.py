@@ -1,4 +1,4 @@
-"""Model registry for Claude Code, Codex, and Gemini backends."""
+"""Model registry for Claude Code, Codex, Gemini, and Cline backends."""
 
 from typing import Dict
 
@@ -44,6 +44,12 @@ GEMINI_EXPECTED = {
     "gemini-2.5-pro": {"min": 25, "max": 35, "typical": 30},
     "gemini-2.5-flash": {"min": 20, "max": 30, "typical": 25},
 }
+
+# Cline models (configured via Cline CLI auth/provider settings)
+CLINE_MODELS: Dict[str, str] = {}
+CLINE_DESCRIPTIONS = {}
+CLINE_CATEGORIES = {}
+CLINE_EXPECTED = {}
 
 # Claude models
 CLAUDE_MODELS: Dict[str, str] = {
@@ -175,6 +181,8 @@ def get_model_name(alias: str, backend: str = "claude") -> str:
         models = CODEX_MODELS
     elif backend == "gemini":
         models = GEMINI_MODELS
+    elif backend == "cline":
+        models = CLINE_MODELS
     else:
         models = CLAUDE_MODELS
 
@@ -194,6 +202,14 @@ def list_models(backend: str = "claude") -> str:
         categories = GEMINI_CATEGORIES
         descriptions = GEMINI_DESCRIPTIONS
         title = "Available Gemini Models"
+    elif backend == "cline":
+        lines = [
+            "Available Cline Models:",
+            "=" * 50,
+            "Cline models are configured via `cline auth` and provider settings.",
+            "Pass `--model` to set the task setting `model` when your provider supports it.",
+        ]
+        return "\n".join(lines)
     else:
         categories = CLAUDE_CATEGORIES
         descriptions = CLAUDE_DESCRIPTIONS
@@ -226,6 +242,9 @@ def get_expected_performance(model: str, backend: str = "claude") -> dict:
     elif backend == "gemini":
         models = GEMINI_MODELS
         expectations = GEMINI_EXPECTED
+    elif backend == "cline":
+        models = CLINE_MODELS
+        expectations = CLINE_EXPECTED
     else:
         models = CLAUDE_MODELS
         expectations = CLAUDE_EXPECTED
