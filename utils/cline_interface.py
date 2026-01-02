@@ -24,8 +24,10 @@ class ClineCodeInterface:
         Args:
             prompt: The prompt to send to Cline (passed as positional argument).
             cwd: Working directory to execute in.
-            model: Optional model to use (e.g., 'claude-sonnet-4.5').
-                   Set via task setting: -s model=<model_name>
+            model: Optional model parameter (IGNORED for Cline).
+                   Cline does not support setting model via task settings (-s model=).
+                   Models must be configured via 'cline auth' command.
+                   This parameter is kept for API compatibility but has no effect.
         """
         try:
             original_cwd = os.getcwd()
@@ -36,9 +38,15 @@ class ClineCodeInterface:
             # -F plain: plain text output format
             # --oneshot: execute task once without interactive mode (suitable for automation)
             cmd = ["cline", "-y", "-F", "plain", "--oneshot"]
-            if model:
-                # Task settings use -s key=value format
-                cmd.extend(["-s", f"model={model}"])
+            
+            # Note: Cline does not support setting model via -s model= task setting.
+            # The error "unsupported field 'model'" occurs if we try to use it.
+            # Models must be configured via 'cline auth' command (e.g., cline auth -p openai-native -k KEY -m gpt-5).
+            # Cline will use the default configured model from auth settings.
+            # The model parameter is ignored to maintain API compatibility with other backends.
+            # if model:
+            #     cmd.extend(["-s", f"model={model}"])
+            
             # Prompt is passed as positional argument (not via stdin)
             cmd.append(prompt)
 
