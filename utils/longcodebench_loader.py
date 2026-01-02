@@ -189,15 +189,16 @@ def load_longcodebench_from_zip(
                         if split_name and split_name not in ['dataset_dict.json', 'dataset_info.json', 'state.json']:
                             available_splits.add(split_name)
             
-            # 确定实际要使用的 split
+            # 确定实际要使用的 split（基于 zip 文件中的实际结构）
             actual_split = split
+            split_changed = False
             if split not in available_splits:
                 if 'train' in available_splits:
                     actual_split = 'train'
-                    print(f"Note: Split '{split}' not found. Using 'train' instead.")
+                    split_changed = True
                 elif available_splits:
                     actual_split = list(available_splits)[0]
-                    print(f"Note: Split '{split}' not found. Using '{actual_split}' instead.")
+                    split_changed = True
                 else:
                     # 查找可用的 context lengths
                     available = set()
@@ -235,26 +236,29 @@ def load_longcodebench_from_zip(
         arrow_file_pattern = str(dataset_path / '*.arrow')
         dataset_dict = load_dataset('arrow', data_files=arrow_file_pattern)
         
-        # 从 dataset_dict 中获取实际的 split（使用 actual_split，因为我们已经确定了）
-        # 注意：load_dataset 可能返回的 split 名称与文件路径中的不同
+        # 从 dataset_dict 中获取实际的 split
+        # 注意：load_dataset 返回的 split 名称可能与文件路径中的不同
+        final_split = actual_split
         if actual_split in dataset_dict:
             dataset = dataset_dict[actual_split]
+            final_split = actual_split
         elif 'train' in dataset_dict:
-            # 如果请求的 split 不存在，但 train 存在，使用 train
-            if actual_split != 'train':
-                print(f"Note: Split '{actual_split}' not found. Using 'train' instead.")
             dataset = dataset_dict['train']
+            final_split = 'train'
         elif len(dataset_dict) == 1:
             # 如果只有一个 split，直接使用它
-            loaded_split = list(dataset_dict.keys())[0]
-            if loaded_split != actual_split:
-                print(f"Note: Split '{actual_split}' not found. Using '{loaded_split}' instead.")
+            final_split = list(dataset_dict.keys())[0]
             dataset = list(dataset_dict.values())[0]
         else:
             available = list(dataset_dict.keys())
             raise ValueError(
                 f"Could not load split '{actual_split}'. Available splits: {available}"
             )
+        
+        # 只在 split 确实改变时打印一次提示
+        if split_changed or final_split != split:
+            if final_split != split:
+                print(f"Note: Split '{split}' not available. Using '{final_split}' instead.")
         
         return dataset
         
