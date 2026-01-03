@@ -175,6 +175,7 @@ def load_longcodebench_from_zip(
     
     # 创建临时目录
     temp_dir = Path(tempfile.mkdtemp(prefix='longcodebench_'))
+    print(f"[LongCodeBench] Extracting data from zip to temporary directory: {temp_dir}")
     
     try:
         # 解压特定 context length 的数据到临时目录
@@ -287,6 +288,7 @@ def load_longcodebench_dataset(
     # 检查是否是 Steefano/LCB 格式（需要特殊处理）
     if 'Steefano/LCB' in dataset_name or 'Steefano--LCB' in dataset_name.replace('/', '--'):
         # 使用 zip 文件加载方法（会自动处理 split 回退）
+        print(f"[LongCodeBench] Loading from zip file for {dataset_name}")
         return load_longcodebench_from_zip(dataset_name, split, context_length)
     
     # 否则使用标准方法

@@ -223,15 +223,21 @@ class CodeSWEAgent:
         is_longcodebench = self.longcodebench or is_longcodebench_dataset(dataset_name)
         
         if is_longcodebench:
-            print("Detected LongCodeBench dataset")
+            print("=" * 60)
+            print("✓ Detected LongCodeBench dataset - Using LongCodeBench loader")
+            print("=" * 60)
             # Use LongCodeBench loader
             context_length = self.context_length
             if context_length is None:
                 # Try to extract from dataset name
                 context_length = extract_context_length(dataset_name)
             if context_length:
-                print(f"Using context length: k={context_length}")
+                print(f"Using context length: {context_length}")
+            else:
+                print("Using default context length: 32K")
             dataset = load_longcodebench_dataset(dataset_name, split=split, context_length=context_length)
+            print(f"[LongCodeBench] Successfully loaded {len(dataset)} instances")
+            print("=" * 60)
         else:
             # Standard SWE-bench dataset
             dataset = load_dataset(dataset_name, split=split)
