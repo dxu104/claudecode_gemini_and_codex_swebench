@@ -383,7 +383,7 @@ Examples:
     run_parser.add_argument('--model', type=str, help='Model to use (e.g., opus-4.1, codex-4.2)')
     run_parser.add_argument('--backend', type=str, choices=['claude', 'codex', 'gemini', 'cline'], help='Code model backend')
     run_parser.add_argument('--longcodebench', action='store_true', help='Explicitly indicate this is a LongCodeBench dataset')
-    run_parser.add_argument('--context-length', type=int, metavar='K', help='Context length (k value) for LongCodeBench datasets')
+    run_parser.add_argument('--context-length', type=str, metavar='K', help='Context length for LongCodeBench datasets (e.g., "32K", "128K", "1M" or integer)')
     
     # EVAL command
     eval_parser = subparsers.add_parser('eval', help='Evaluate past predictions')

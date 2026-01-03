@@ -265,8 +265,8 @@ def main():
                        help="Optional notes about this run")
     parser.add_argument("--longcodebench", action="store_true",
                        help="Explicitly indicate this is a LongCodeBench dataset")
-    parser.add_argument("--context-length", type=int, metavar="K",
-                       help="Context length (k value) for LongCodeBench datasets")
+    parser.add_argument("--context-length", type=str, metavar="K",
+                       help="Context length for LongCodeBench datasets (e.g., '32K', '128K', '1M' or integer)")
     
     args = parser.parse_args()
     
