@@ -169,9 +169,11 @@ class EnhancedBenchmarkRunner:
             if "Verified" in dataset_name or "verified" in dataset_name.lower():
                 evaluation_dataset = "princeton-nlp/SWE-bench_Verified"
             else:
-                # Default to SWE-bench_Lite
-                evaluation_dataset = "princeton-nlp/SWE-bench_Lite"
-            print(f"[LongCodeBench] Using original SWE-bench dataset for evaluation: {evaluation_dataset}")
+                # Use full SWE-bench instead of Lite, as LongCodeBench may contain instances
+                # from the full dataset that are not in Lite
+                evaluation_dataset = "princeton-nlp/SWE-bench"
+                print(f"[LongCodeBench] Using original SWE-bench dataset for evaluation: {evaluation_dataset}")
+                print(f"[LongCodeBench] Note: Using full SWE-bench (not Lite) to ensure all instances are available")
         
         # Run evaluation
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
