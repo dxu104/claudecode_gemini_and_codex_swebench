@@ -200,15 +200,11 @@ class PredictionEvaluator:
             if "Verified" in dataset_name or "verified" in dataset_name.lower():
                 evaluation_dataset = "princeton-nlp/SWE-bench_Verified"
             else:
-                # Try to find which dataset contains the instances
-                # Read predictions to get instance IDs
-                instance_ids = [pred.get("instance_id", "") for pred in predictions if pred.get("instance_id")]
-                
-                # Try SWE-bench_Lite first, then fallback to full SWE-bench
-                evaluation_dataset = "princeton-nlp/SWE-bench_Lite"
+                # Use full SWE-bench instead of Lite, as LongCodeBench may contain instances
+                # from the full dataset that are not in Lite
+                evaluation_dataset = "princeton-nlp/SWE-bench"
                 print(f"[LongCodeBench] Using original SWE-bench dataset for evaluation: {evaluation_dataset}")
-                print(f"[LongCodeBench] Note: If instances not found, try: princeton-nlp/SWE-bench")
-                print(f"[LongCodeBench] Instance IDs to evaluate: {', '.join(instance_ids[:3])}{'...' if len(instance_ids) > 3 else ''}")
+                print(f"[LongCodeBench] Note: Using full SWE-bench (not Lite) to ensure all instances are available")
         
         # Run evaluation
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
