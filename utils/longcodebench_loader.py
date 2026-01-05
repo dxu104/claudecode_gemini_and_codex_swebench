@@ -272,15 +272,18 @@ def load_longcodebench_from_zip(
 def load_longcodebench_dataset(
     dataset_name: str,
     split: str = "test",
-    context_length: Optional[Union[int, str]] = None
+    context_length: Optional[Union[int, str]] = None,
+    max_k: Optional[int] = None
 ) -> Dataset:
     """
-    Load a LongCodeBench dataset, optionally filtering by context length.
+    Load a LongCodeBench dataset, optionally filtering by context length and max_k.
     
     Args:
         dataset_name: HuggingFace dataset identifier
         split: Dataset split to load (default: "test", will fallback to "train" if needed)
         context_length: Optional context length to filter by (if dataset has multiple k values)
+        max_k: Optional maximum number of context files (k value) to filter by. 
+               Only instances with num_files <= max_k will be included.
         
     Returns:
         Loaded dataset
@@ -289,7 +292,19 @@ def load_longcodebench_dataset(
     if 'Steefano/LCB' in dataset_name or 'Steefano--LCB' in dataset_name.replace('/', '--'):
         # 使用 zip 文件加载方法（会自动处理 split 回退）
         print(f"[LongCodeBench] Loading from zip file for {dataset_name}")
-        return load_longcodebench_from_zip(dataset_name, split, context_length)
+        dataset = load_longcodebench_from_zip(dataset_name, split, context_length)
+        
+        # 如果指定了 max_k，过滤实例
+        if max_k is not None:
+            if 'num_files' in dataset.features:
+                original_size = len(dataset)
+                dataset = dataset.filter(lambda x: x.get('num_files', 0) <= max_k)
+                filtered_size = len(dataset)
+                print(f"[LongCodeBench] Filtered by max_k={max_k}: {original_size} -> {filtered_size} instances")
+            else:
+                print(f"[LongCodeBench] Warning: 'num_files' field not found, cannot filter by max_k")
+        
+        return dataset
     
     # 否则使用标准方法
     try:
@@ -319,6 +334,24 @@ def load_longcodebench_dataset(
                     f"Dataset {dataset_name} has context length {dataset_k}, "
                     f"but requested {context_length}"
                 )
+    
+    # If max_k is specified, filter instances by num_files
+    if max_k is not None:
+        if 'num_files' in dataset.features:
+            original_size = len(dataset)
+            dataset = dataset.filter(lambda x: x.get('num_files', 0) <= max_k)
+            filtered_size = len(dataset)
+            if original_size != filtered_size:
+                print(f"[LongCodeBench] Filtered by max_k={max_k}: {original_size} -> {filtered_size} instances")
+        elif 'k' in dataset.features:
+            # 如果数据集有 'k' 字段而不是 'num_files'
+            original_size = len(dataset)
+            dataset = dataset.filter(lambda x: x.get('k', 0) <= max_k)
+            filtered_size = len(dataset)
+            if original_size != filtered_size:
+                print(f"[LongCodeBench] Filtered by max_k={max_k}: {original_size} -> {filtered_size} instances")
+        else:
+            print(f"[LongCodeBench] Warning: 'num_files' or 'k' field not found, cannot filter by max_k")
     
     return dataset
 
