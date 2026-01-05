@@ -343,6 +343,56 @@ def list_models_command(args):
     print()
     return 0
 
+def make_tunable_command(args):
+    """Handle 'make-tunable' subcommand - create tunable SWE-bench dataset"""
+    try:
+        from utils.make_tunable_dataset import make_tunable_swebench
+    except ImportError as e:
+        print(f"\n❌ Error importing make_tunable_dataset: {e}")
+        print("\nMake sure all dependencies are installed:")
+        print("  pip install datasets tqdm")
+        print("  git clone https://github.com/princeton-nlp/SWE-bench.git")
+        print("  cd SWE-bench && pip install -e .")
+        return 1
+    
+    print("="*60)
+    print("Create Tunable SWE-bench Dataset")
+    print("="*60)
+    print(f"Source dataset: {args.dataset}")
+    print(f"Splits: {args.splits}")
+    print(f"Output directory: {args.output_dir}")
+    print(f"Prompt style: {args.prompt_style}")
+    print(f"Max k: {args.max_k} (will create k=0 to k={args.max_k-1} variants)")
+    print(f"Retrieval type: {args.retrieval_type}")
+    if hasattr(args, 'retrieval_file') and args.retrieval_file:
+        print(f"Retrieval file: {args.retrieval_file}")
+    if hasattr(args, 'hfhub_dataset') and args.hfhub_dataset:
+        print(f"HuggingFace dataset: {args.hfhub_dataset}")
+    print("="*60)
+    
+    try:
+        make_tunable_swebench(
+            dataset=args.dataset,
+            splits=args.splits,
+            prompt_style=args.prompt_style,
+            retrieval_type=args.retrieval_type,
+            max_k=args.max_k,
+            max_tokens=args.max_tokens if hasattr(args, 'max_tokens') else None,
+            retrieval_file=args.retrieval_file if hasattr(args, 'retrieval_file') else None,
+            output_dir=args.output_dir,
+            hfhub_dataset=args.hfhub_dataset if hasattr(args, 'hfhub_dataset') else None,
+            num_workers=args.num_workers if hasattr(args, 'num_workers') else 1,
+        )
+        print("\n✅ Successfully created tunable dataset!")
+        print(f"\nYou can now use it with cline backend:")
+        print(f"  python swe_bench.py run --dataset {args.output_dir} --longcodebench --backend cline --limit 10")
+        return 0
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+
 def main():
     parser = argparse.ArgumentParser(
         description="Unified SWE-bench Command Line Tool",
@@ -367,6 +417,9 @@ Examples:
   # Run with specific model
   python swe_bench.py run --model opus-4.1 --quick
   python swe_bench.py run --model sonnet-3.7 --limit 20
+  
+  # Create tunable SWE-bench dataset
+  python swe_bench.py make-tunable --dataset princeton-nlp/SWE-bench_Verified --splits test --output-dir ./tunable_dataset --max-k 20
         """
     )
     
@@ -420,6 +473,32 @@ Examples:
     subparsers.add_parser('check', help='Check scores (stats + pending)')
     list_parser = subparsers.add_parser('list-models', help='List available models')
     list_parser.add_argument('--backend', type=str, choices=['claude', 'codex', 'gemini', 'cline'], help='Backend to list')
+    
+    # MAKE-TUNABLE command
+    make_parser = subparsers.add_parser('make-tunable', 
+        help='Create tunable SWE-bench dataset from original dataset')
+    make_parser.add_argument('--dataset', required=True,
+        help='Source dataset (HuggingFace name or path to directory)')
+    make_parser.add_argument('--splits', nargs='+', default=['test'],
+        help='Splits to process (default: test)')
+    make_parser.add_argument('--output-dir', required=True,
+        help='Output directory to save the dataset')
+    make_parser.add_argument('--prompt-style', default='style-3',
+        choices=['style-2', 'style-3', 'full_file_gen'],
+        help='Prompt style (default: style-3)')
+    make_parser.add_argument('--max-k', type=int, required=True,
+        help='Maximum k value (creates k=0 to k=max_k-1 variants)')
+    make_parser.add_argument('--retrieval-type', default='bm25',
+        choices=['bm25', 'random'],
+        help='Retrieval strategy (default: bm25)')
+    make_parser.add_argument('--retrieval-file', type=str, default=None,
+        help='Path to existing retrieval file (optional, will generate if not provided)')
+    make_parser.add_argument('--hfhub-dataset', type=str, default=None,
+        help='HuggingFace dataset name to push to (optional)')
+    make_parser.add_argument('--max-tokens', type=int, default=None,
+        help='Maximum tokens limit (optional)')
+    make_parser.add_argument('--num-workers', type=int, default=1,
+        help='Number of workers for token counting (default: 1)')
     
     args = parser.parse_args()
     
@@ -483,6 +562,8 @@ Examples:
         return scores_command(CheckArgs())
     elif args.command == 'list-models':
         return list_models_command(args)
+    elif args.command == 'make-tunable':
+        return make_tunable_command(args)
     else:
         parser.print_help()
         return 1
