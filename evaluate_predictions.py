@@ -219,7 +219,7 @@ class PredictionEvaluator:
             "--max_workers", str(max_workers),
             "--timeout", "600",
             "--cache_level", "env",
-            "--report_dir", str(self.eval_results_dir),
+            "--out_dir", str(self.eval_results_dir),
         ]
         
         print(f"\n🔬 Running Docker evaluation...")

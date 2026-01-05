@@ -192,7 +192,7 @@ class EnhancedBenchmarkRunner:
             "--max_workers", str(max_workers),
             "--timeout", "600",  # 10 minutes per instance
             "--cache_level", "env",
-            "--report_dir", str(self.eval_results_dir),
+            "--out_dir", str(self.eval_results_dir),
         ]
         
         print(f"Running: {' '.join(cmd)}")

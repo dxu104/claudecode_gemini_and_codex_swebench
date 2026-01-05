@@ -18,6 +18,13 @@ import datasets as dts
 from tqdm.auto import tqdm
 
 # Try to import from swebench (may need to install from source)
+SWEBENCH_AVAILABLE = False
+bm25_main = None
+PROMPT_FUNCTIONS = None
+add_text_inputs = None
+extract_fields = None
+
+# Strategy 1: Try standard import (swebench.swebench.inference...)
 try:
     from swebench.swebench.inference.make_datasets.bm25_retrieval import main as bm25_main
     from swebench.swebench.inference.make_datasets.create_instance import (
@@ -28,12 +35,73 @@ try:
         extract_fields,
     )
     SWEBENCH_AVAILABLE = True
-except ImportError:
-    SWEBENCH_AVAILABLE = False
-    print("⚠️  Warning: swebench.inference.make_datasets modules not available.")
-    print("   You may need to install SWE-bench from source:")
-    print("   git clone https://github.com/princeton-nlp/SWE-bench.git")
-    print("   cd SWE-bench && pip install -e .")
+except ImportError as e1:
+    # Strategy 2: Try adding SWE-bench source to path if it exists locally
+    import sys
+    possible_swebench_paths = [
+        "/home/dxu_local/SWE-bench",  # User's SWE-bench location from error message
+        os.path.expanduser("~/SWE-bench"),
+        os.path.join(os.path.dirname(__file__), "../../SWE-bench"),
+        os.path.join(os.path.dirname(__file__), "../SWE-bench"),
+    ]
+    
+    for swebench_path in possible_swebench_paths:
+        if os.path.exists(swebench_path):
+            swebench_src = os.path.join(swebench_path, "swebench")
+            if os.path.exists(swebench_src):
+                if swebench_path not in sys.path:
+                    sys.path.insert(0, swebench_path)
+                try:
+                    from swebench.inference.make_datasets.bm25_retrieval import main as bm25_main
+                    from swebench.inference.make_datasets.create_instance import (
+                        PROMPT_FUNCTIONS,
+                        add_text_inputs,
+                    )
+                    from swebench.inference.make_datasets.create_text_dataset import (
+                        extract_fields,
+                    )
+                    SWEBENCH_AVAILABLE = True
+                    print(f"✓ SWE-bench modules loaded from: {swebench_path}")
+                    break
+                except ImportError:
+                    continue
+    
+    if not SWEBENCH_AVAILABLE:
+        print("⚠️  Warning: swebench.inference.make_datasets modules not available.")
+        print(f"   Initial import error: {e1}")
+        print("\n   Diagnostic information:")
+        print(f"   Python executable: {sys.executable}")
+        
+        # Check if swebench is installed at all
+        try:
+            import swebench
+            print(f"   ✓ swebench package found at: {swebench.__file__}")
+            # Try to find the actual structure
+            try:
+                import swebench.swebench
+                print(f"   ✓ swebench.swebench found")
+                if hasattr(swebench.swebench, '__path__'):
+                    print(f"   swebench.swebench path: {swebench.swebench.__path__}")
+            except ImportError:
+                print(f"   ✗ swebench.swebench not found")
+            
+            # Try to list what's available
+            try:
+                import swebench.inference
+                print(f"   ✓ swebench.inference found")
+            except ImportError:
+                print(f"   ✗ swebench.inference not found")
+        except ImportError as e2:
+            print(f"   ✗ swebench package not found: {e2}")
+        
+        print("\n   To fix this:")
+        print("   1. Make sure SWE-bench is installed from source:")
+        print("      cd /home/dxu_local/SWE-bench")
+        print("      pip install -e .")
+        print("   2. Verify installation:")
+        print("      python -c 'from swebench.swebench.inference.make_datasets.bm25_retrieval import main; print(\"OK\")'")
+        print("   3. Or try:")
+        print("      python -c 'from swebench.inference.make_datasets.bm25_retrieval import main; print(\"OK\")'")
 
 # Try to import count_tokens from long-code-bench or implement a simple version
 COUNT_TOKENS_AVAILABLE = False
