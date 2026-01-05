@@ -14,6 +14,7 @@ from pathlib import Path
 import logging
 import jsonlines
 from datasets import load_dataset
+from utils.longcodebench_loader import is_longcodebench_dataset
 
 class EnhancedBenchmarkRunner:
     def __init__(self, model=None, backend="claude", longcodebench=False, context_length=None):
@@ -159,6 +160,19 @@ class EnhancedBenchmarkRunner:
                 }
                 writer.write(eval_pred)
         
+        # For LongCodeBench datasets, use the original SWE-bench dataset for evaluation
+        # because LongCodeBench instances have the same instance_id as original SWE-bench
+        evaluation_dataset = dataset_name
+        if is_longcodebench_dataset(dataset_name) or self.longcodebench:
+            # LongCodeBench is based on SWE-bench, so use original dataset for evaluation
+            # Try to determine which SWE-bench dataset was used
+            if "Verified" in dataset_name or "verified" in dataset_name.lower():
+                evaluation_dataset = "princeton-nlp/SWE-bench_Verified"
+            else:
+                # Default to SWE-bench_Lite
+                evaluation_dataset = "princeton-nlp/SWE-bench_Lite"
+            print(f"[LongCodeBench] Using original SWE-bench dataset for evaluation: {evaluation_dataset}")
+        
         # Run evaluation
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_id = f"{self.backend}_code_{timestamp}"
@@ -166,7 +180,7 @@ class EnhancedBenchmarkRunner:
         cmd = [
             sys.executable, "-m", "swebench.harness.run_evaluation",
             "--predictions_path", eval_file,
-            "--dataset_name", dataset_name,
+            "--dataset_name", evaluation_dataset,
             "--split", "test",
             "--run_id", run_id,
             "--max_workers", str(max_workers),
