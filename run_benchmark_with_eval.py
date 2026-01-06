@@ -77,9 +77,12 @@ class EnhancedBenchmarkRunner:
             sys.executable,
             "code_swe_agent.py",
             "--dataset_name", dataset_name,
-            "--limit", str(limit),
             "--backend", self.backend,
         ]
+        
+        # Only add --limit if it's not None
+        if limit is not None:
+            cmd.extend(["--limit", str(limit)])
 
         if self.model:
             cmd.extend(["--model", self.model])
