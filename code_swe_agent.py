@@ -386,9 +386,18 @@ def main():
     
     # Run on specific instance or dataset
     if args.instance_id:
-        print(f"Running on instance: {args.instance_id}")
-        prediction = agent.run_on_instance(args.instance_id, args.dataset_name)
-        print(f"Prediction saved: {prediction}")
+        # For LongCodeBench datasets, --instance-id means process all k-value variants
+        # For standard datasets, it means process a single instance
+        is_longcodebench = agent.longcodebench or is_longcodebench_dataset(args.dataset_name)
+        
+        if is_longcodebench:
+            print(f"Running on all k-value variants for instance: {args.instance_id}")
+            predictions = agent.run_on_dataset(args.dataset_name, limit=args.limit)
+            print(f"Processed {len(predictions)} k-value variants")
+        else:
+            print(f"Running on instance: {args.instance_id}")
+            prediction = agent.run_on_instance(args.instance_id, args.dataset_name)
+            print(f"Prediction saved: {prediction}")
     else:
         print(f"Running on dataset: {args.dataset_name}")
         predictions = agent.run_on_dataset(args.dataset_name, limit=args.limit)
