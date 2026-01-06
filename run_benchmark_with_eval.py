@@ -143,8 +143,11 @@ class EnhancedBenchmarkRunner:
                     for line in output_lines[-20:]:
                         print(f"  {line.rstrip()}")
             
-            # Find the latest prediction file
-            pred_files = sorted(self.predictions_dir.glob("predictions_*.jsonl"), reverse=True)
+            # Find the latest prediction file (exclude _eval.jsonl files)
+            pred_files = [
+                f for f in sorted(self.predictions_dir.glob("predictions_*.jsonl"), reverse=True)
+                if "_eval.jsonl" not in str(f)
+            ]
             
             if not pred_files:
                 print("❌ No prediction files generated")
