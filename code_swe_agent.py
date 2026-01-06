@@ -251,13 +251,18 @@ class CodeSWEAgent:
                 instance_id=self.instance_id
             )
             print(f"[LongCodeBench] Successfully loaded {len(dataset)} instances")
+            if self.instance_id:
+                print(f"[LongCodeBench] Will process all {len(dataset)} k-value variants for instance_id={self.instance_id}")
             print("=" * 60)
         else:
             # Standard SWE-bench dataset
             dataset = load_dataset(dataset_name, split=split)
         
         if limit:
+            original_size = len(dataset)
             dataset = dataset.select(range(min(limit, len(dataset))))
+            if len(dataset) < original_size:
+                print(f"[Info] Limited to {len(dataset)} instances (from {original_size} total)")
             
         self.pred_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.pred_file = self.predictions_dir / f"predictions_{self.pred_timestamp}.jsonl"

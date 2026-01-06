@@ -47,7 +47,8 @@ def run_command(args):
     )
     
     # Set default limit if not specified
-    if not args.limit:
+    # If instance_id is specified, don't set a default limit (will process all variants)
+    if not args.limit and not (hasattr(args, 'instance_id') and args.instance_id):
         if args.quick:
             args.limit = 10
         elif args.standard:
@@ -65,7 +66,10 @@ def run_command(args):
     print("SWE-bench Benchmark Runner")
     print("="*60)
     print(f"Dataset: {args.dataset}")
-    print(f"Instances: {args.limit}")
+    if hasattr(args, 'instance_id') and args.instance_id:
+        print(f"Instances: All k-value variants for {args.instance_id}")
+    else:
+        print(f"Instances: {args.limit}")
     if hasattr(args, 'model') and args.model:
         model_name = get_model_name(args.model, runner.backend) if args.model else None
         print(f"Model: {args.model} -> {model_name}")
@@ -84,7 +88,9 @@ def run_command(args):
     # Run inference
     print(f"\nPhase 1: Generating patches with {runner.backend.title()} Code...")
     start_time = time.time()
-    prediction_file, generation_time = runner.run_inference(args.dataset, args.limit)
+    # If instance_id is specified, pass None as limit to process all variants
+    inference_limit = None if (hasattr(args, 'instance_id') and args.instance_id) else args.limit
+    prediction_file, generation_time = runner.run_inference(args.dataset, inference_limit)
     
     if not prediction_file:
         print("❌ Failed to generate predictions")
