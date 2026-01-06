@@ -6,7 +6,7 @@ which include context files for different context lengths (k values).
 """
 
 from typing import Dict, Optional, List, Any, Union
-from datasets import load_dataset, Dataset
+from datasets import load_dataset, Dataset, load_from_disk
 import re
 import tempfile
 import shutil
@@ -280,7 +280,7 @@ def load_longcodebench_dataset(
     Load a LongCodeBench dataset, optionally filtering by context length, max_k, and instance_id.
     
     Args:
-        dataset_name: HuggingFace dataset identifier
+        dataset_name: HuggingFace dataset identifier or local path
         split: Dataset split to load (default: "test", will fallback to "train" if needed)
         context_length: Optional context length to filter by (if dataset has multiple k values)
         max_k: Optional maximum number of context files (k value) to filter by. 
@@ -319,18 +319,44 @@ def load_longcodebench_dataset(
         
         return dataset
     
-    # 否则使用标准方法
-    try:
-        dataset = load_dataset(dataset_name, split=split)
-    except Exception as e:
-        # 如果标准方法失败，尝试 zip 方法作为后备
+    # 检查是否是本地路径
+    dataset_path = Path(dataset_name)
+    if dataset_path.exists() and dataset_path.is_dir():
+        # 使用 load_from_disk 加载本地数据集
+        print(f"[LongCodeBench] Loading from local path: {dataset_name}")
         try:
-            return load_longcodebench_from_zip(dataset_name, split, context_length)
-        except:
+            dataset_dict = load_from_disk(dataset_name)
+            # 尝试获取指定的 split
+            if split in dataset_dict:
+                dataset = dataset_dict[split]
+            elif 'test' in dataset_dict:
+                dataset = dataset_dict['test']
+                print(f"[LongCodeBench] Split '{split}' not found, using 'test' instead")
+            elif len(dataset_dict) == 1:
+                dataset = list(dataset_dict.values())[0]
+                print(f"[LongCodeBench] Using the only available split: {list(dataset_dict.keys())[0]}")
+            else:
+                available = list(dataset_dict.keys())
+                raise ValueError(
+                    f"Split '{split}' not found. Available splits: {available}"
+                )
+        except Exception as e:
             raise ValueError(
-                f"Failed to load dataset {dataset_name}: {e}\n"
-                "Make sure the dataset exists on HuggingFace and you have access to it."
+                f"Failed to load dataset from local path {dataset_name}: {e}"
             )
+    else:
+        # 否则使用标准方法（HuggingFace Hub）
+        try:
+            dataset = load_dataset(dataset_name, split=split)
+        except Exception as e:
+            # 如果标准方法失败，尝试 zip 方法作为后备
+            try:
+                return load_longcodebench_from_zip(dataset_name, split, context_length)
+            except:
+                raise ValueError(
+                    f"Failed to load dataset {dataset_name}: {e}\n"
+                    "Make sure the dataset exists on HuggingFace and you have access to it."
+                )
     
     # If context_length is specified and dataset has a 'k' or 'context_length' field,
     # filter to that specific k value
