@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 import logging
 import jsonlines
+from collections import defaultdict
 from datasets import load_dataset
 from utils.longcodebench_loader import is_longcodebench_dataset
 
@@ -191,128 +192,275 @@ class EnhancedBenchmarkRunner:
         print(f"\n🔬 Running real evaluation on {prediction_file}...")
         print("This will test if patches actually fix the issues (takes time)...")
         
-        # Prepare predictions for evaluation format
-        eval_file = prediction_file.replace('.jsonl', '_eval.jsonl')
-        
+        # Load predictions
         predictions = []
         with jsonlines.open(prediction_file) as reader:
             for obj in reader:
                 predictions.append(obj)
-
-        model_name = f"{self.backend}-code"
-        with jsonlines.open(eval_file, mode='w') as writer:
-            for pred in predictions:
-                eval_pred = {
-                    "instance_id": pred.get("instance_id", ""),
-                    "model_name_or_path": model_name,
-                    "model_patch": pred.get("prediction", "")
-                }
-                writer.write(eval_pred)
+        
+        # Check if this is a tunable dataset (has num_files field)
+        has_num_files = any("num_files" in pred for pred in predictions)
+        is_tunable = (is_longcodebench_dataset(dataset_name) or self.longcodebench) and has_num_files
         
         # For LongCodeBench datasets, use the original SWE-bench dataset for evaluation
-        # because LongCodeBench instances have the same instance_id as original SWE-bench
         evaluation_dataset = dataset_name
         if is_longcodebench_dataset(dataset_name) or self.longcodebench:
-            # LongCodeBench is based on SWE-bench, so use original dataset for evaluation
-            # Try to determine which SWE-bench dataset was used
             if "Verified" in dataset_name or "verified" in dataset_name.lower():
                 evaluation_dataset = "princeton-nlp/SWE-bench_Verified"
             else:
-                # Use full SWE-bench instead of Lite, as LongCodeBench may contain instances
-                # from the full dataset that are not in Lite
                 evaluation_dataset = "princeton-nlp/SWE-bench"
                 print(f"[LongCodeBench] Using original SWE-bench dataset for evaluation: {evaluation_dataset}")
-                print(f"[LongCodeBench] Note: Using full SWE-bench (not Lite) to ensure all instances are available")
         
-        # Run evaluation
+        model_name = f"{self.backend}-code"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_id = f"{self.backend}_code_{timestamp}"
+        base_run_id = f"{self.backend}_code_{timestamp}"
         
-        cmd = [
-            sys.executable, "-m", "swebench.harness.run_evaluation",
-            "--predictions_path", eval_file,
-            "--dataset_name", evaluation_dataset,
-            "--split", "test",
-            "--run_id", run_id,
-            "--max_workers", str(max_workers),
-            "--timeout", "600",  # 10 minutes per instance
-            "--cache_level", "env",
-            "--out_dir", str(self.eval_results_dir),
-        ]
-        
-        print(f"Running: {' '.join(cmd)}")
-        
-        try:
-            start_time = time.time()
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                cwd=str(self.eval_results_dir),
-            )
+        # If tunable dataset, evaluate each k-value group separately
+        if is_tunable:
+            print(f"[Tunable] Detected tunable dataset with k-value variants. Evaluating each k-value group separately...")
             
-            # Print output in real-time
-            output_lines = []
-            for line in iter(process.stdout.readline, ''):
-                print(line, end='')
-                output_lines.append(line)
+            # Group predictions by num_files (k value)
+            predictions_by_k = defaultdict(list)
+            for pred in predictions:
+                k_value = pred.get("num_files", 0)
+                predictions_by_k[k_value].append(pred)
             
-            process.wait()
-            eval_time = time.time() - start_time
-
-            json_path = self.eval_results_dir / f"{model_name}.{run_id}.json"
-            resolved = total = None
-            if json_path.exists():
-                try:
-                    with open(json_path) as f:
-                        data = json.load(f)
-                    resolved = data.get("resolved_instances")
-                    total = data.get("total_instances") or len(predictions)
-                except (OSError, json.JSONDecodeError) as exc:
-                    logging.warning(f"Failed to parse evaluation JSON: {exc}")
-
-            if resolved is None or total is None:
-                logging.warning("Structured evaluation results missing; falling back to regex parsing.")
-                output_text = ''.join(output_lines)
-                import re
-                patterns = [
-                    r'Instances resolved: (\d+)',
-                    r'(\d+) of (\d+) instances',
-                    r'(\d+)/(\d+) resolved',
-                    r'resolved (\d+) of (\d+)',
-                    r'Success Rate: (\d+\.?\d*)\%'
-                ]
-                resolved = None
-                total = None
-                for pattern in patterns:
-                    match = re.search(pattern, output_text)
-                    if match:
-                        if '%' in pattern:
-                            return float(match.group(1)), eval_time
-                        elif 'Instances resolved' in pattern:
-                            resolved = int(match.group(1))
-                            total = len(predictions)
-                            break
-                        else:
-                            resolved = int(match.group(1))
-                            total = int(match.group(2)) if len(match.groups()) > 1 else len(predictions)
-                            break
-                if resolved is None or total is None:
-                    print("\n⚠️ Could not parse evaluation results")
-                    return None, eval_time
-
-            score = (resolved / total) * 100 if total else 0
-            print(f"\n📊 Real Evaluation Score: {score:.2f}% ({resolved}/{total} issues fixed)")
-            return score, eval_time
+            print(f"[Tunable] Found {len(predictions_by_k)} k-value groups: {sorted(predictions_by_k.keys())}")
+            
+            results_by_k = {}
+            total_eval_time = 0
+            total_resolved = 0
+            total_instances = 0
+            
+            # Evaluate each k-value group
+            for k_value in sorted(predictions_by_k.keys()):
+                k_predictions = predictions_by_k[k_value]
+                print(f"\n{'='*60}")
+                print(f"Evaluating k={k_value} ({len(k_predictions)} instances)")
+                print(f"{'='*60}")
                 
-        except subprocess.TimeoutExpired:
-            print("\n⚠️ Evaluation timed out")
-            return None, 1800
-        except Exception as e:
-            print(f"\n⚠️ Evaluation error: {e}")
-            return None, 0
+                # Create temporary eval file for this k-value group
+                tmp_dir = Path(os.getenv("TMPDIR", "/tmp"))
+                tmp_eval_file = tmp_dir / f"pred_{base_run_id}_k{k_value}_eval.jsonl"
+                
+                with jsonlines.open(tmp_eval_file, mode='w') as writer:
+                    for pred in k_predictions:
+                        eval_pred = {
+                            "instance_id": pred.get("instance_id", ""),
+                            "model_name_or_path": model_name,
+                            "model_patch": pred.get("prediction", "")
+                        }
+                        writer.write(eval_pred)
+                
+                # Run evaluation for this k-value group
+                k_run_id = f"{base_run_id}_k{k_value}"
+                cmd = [
+                    sys.executable, "-m", "swebench.harness.run_evaluation",
+                    "--predictions_path", str(tmp_eval_file),
+                    "--dataset_name", evaluation_dataset,
+                    "--split", "test",
+                    "--run_id", k_run_id,
+                    "--max_workers", str(max_workers),
+                    "--timeout", "600",
+                    "--cache_level", "env",
+                    "--out_dir", str(self.eval_results_dir),
+                ]
+                
+                print(f"Running: {' '.join(cmd)}")
+                
+                try:
+                    start_time = time.time()
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        bufsize=1,
+                        cwd=str(self.eval_results_dir),
+                    )
+                    
+                    output_lines = []
+                    for line in iter(process.stdout.readline, ''):
+                        print(line, end='')
+                        output_lines.append(line)
+                    
+                    process.wait()
+                    k_eval_time = time.time() - start_time
+                    total_eval_time += k_eval_time
+                    
+                    # Parse results for this k-value
+                    json_path = self.eval_results_dir / f"{model_name}.{k_run_id}.json"
+                    k_resolved = k_total = None
+                    if json_path.exists():
+                        try:
+                            with open(json_path) as f:
+                                data = json.load(f)
+                            k_resolved = data.get("resolved_instances", 0)
+                            k_total = data.get("total_instances", len(k_predictions))
+                            results_by_k[k_value] = data
+                        except (OSError, json.JSONDecodeError) as exc:
+                            logging.warning(f"Failed to parse evaluation JSON for k={k_value}: {exc}")
+                    
+                    if k_resolved is None or k_total is None:
+                        # Fallback to regex parsing
+                        output_text = ''.join(output_lines)
+                        import re
+                        match = re.search(r'Instances resolved: (\d+)', output_text)
+                        if match:
+                            k_resolved = int(match.group(1))
+                            k_total = len(k_predictions)
+                        else:
+                            k_resolved = 0
+                            k_total = len(k_predictions)
+                    
+                    k_score = (k_resolved / k_total * 100) if k_total else 0
+                    total_resolved += k_resolved
+                    total_instances += k_total
+                    
+                    print(f"\n📊 k={k_value} Evaluation Score: {k_score:.2f}% ({k_resolved}/{k_total} issues fixed)")
+                    
+                    # Clean up temporary file
+                    if tmp_eval_file.exists():
+                        tmp_eval_file.unlink()
+                        
+                except Exception as e:
+                    print(f"\n⚠️ Evaluation error for k={k_value}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    results_by_k[k_value] = {"error": str(e)}
+            
+            # Summary across all k-values
+            print(f"\n{'='*60}")
+            print(f"📊 TUNABLE DATASET EVALUATION SUMMARY")
+            print(f"{'='*60}")
+            for k_value in sorted(results_by_k.keys()):
+                if "error" not in results_by_k[k_value]:
+                    k_data = results_by_k[k_value]
+                    k_resolved = k_data.get("resolved_instances", 0)
+                    k_total = k_data.get("total_instances", 0)
+                    k_score = (k_resolved / k_total * 100) if k_total else 0
+                    print(f"  k={k_value}: {k_score:.2f}% ({k_resolved}/{k_total} issues fixed)")
+                else:
+                    print(f"  k={k_value}: ERROR - {results_by_k[k_value]['error']}")
+            
+            overall_score = (total_resolved / total_instances * 100) if total_instances else 0
+            print(f"\n📊 Overall Score: {overall_score:.2f}% ({total_resolved}/{total_instances} issues fixed)")
+            print(f"⏱️  Total Evaluation Time: {total_eval_time:.1f}s")
+            
+            # Save combined results
+            combined_results_file = self.eval_results_dir / f"{model_name}.{base_run_id}_combined.json"
+            with open(combined_results_file, 'w') as f:
+                json.dump({
+                    "overall": {
+                        "resolved_instances": total_resolved,
+                        "total_instances": total_instances,
+                        "score": overall_score
+                    },
+                    "by_k": results_by_k
+                }, f, indent=2)
+            
+            return overall_score, total_eval_time
+        
+        else:
+            # Standard evaluation (non-tunable or no num_files field)
+            eval_file = prediction_file.replace('.jsonl', '_eval.jsonl')
+            
+            with jsonlines.open(eval_file, mode='w') as writer:
+                for pred in predictions:
+                    eval_pred = {
+                        "instance_id": pred.get("instance_id", ""),
+                        "model_name_or_path": model_name,
+                        "model_patch": pred.get("prediction", "")
+                    }
+                    writer.write(eval_pred)
+            
+            # Run evaluation
+            run_id = base_run_id
+            
+            cmd = [
+                sys.executable, "-m", "swebench.harness.run_evaluation",
+                "--predictions_path", eval_file,
+                "--dataset_name", evaluation_dataset,
+                "--split", "test",
+                "--run_id", run_id,
+                "--max_workers", str(max_workers),
+                "--timeout", "600",
+                "--cache_level", "env",
+                "--out_dir", str(self.eval_results_dir),
+            ]
+            
+            print(f"Running: {' '.join(cmd)}")
+            
+            try:
+                start_time = time.time()
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    cwd=str(self.eval_results_dir),
+                )
+                
+                output_lines = []
+                for line in iter(process.stdout.readline, ''):
+                    print(line, end='')
+                    output_lines.append(line)
+                
+                process.wait()
+                eval_time = time.time() - start_time
+
+                json_path = self.eval_results_dir / f"{model_name}.{run_id}.json"
+                resolved = total = None
+                if json_path.exists():
+                    try:
+                        with open(json_path) as f:
+                            data = json.load(f)
+                        resolved = data.get("resolved_instances")
+                        total = data.get("total_instances") or len(predictions)
+                    except (OSError, json.JSONDecodeError) as exc:
+                        logging.warning(f"Failed to parse evaluation JSON: {exc}")
+
+                if resolved is None or total is None:
+                    logging.warning("Structured evaluation results missing; falling back to regex parsing.")
+                    output_text = ''.join(output_lines)
+                    import re
+                    patterns = [
+                        r'Instances resolved: (\d+)',
+                        r'(\d+) of (\d+) instances',
+                        r'(\d+)/(\d+) resolved',
+                        r'resolved (\d+) of (\d+)',
+                        r'Success Rate: (\d+\.?\d*)\%'
+                    ]
+                    resolved = None
+                    total = None
+                    for pattern in patterns:
+                        match = re.search(pattern, output_text)
+                        if match:
+                            if '%' in pattern:
+                                return float(match.group(1)), eval_time
+                            elif 'Instances resolved' in pattern:
+                                resolved = int(match.group(1))
+                                total = len(predictions)
+                                break
+                            else:
+                                resolved = int(match.group(1))
+                                total = int(match.group(2)) if len(match.groups()) > 1 else len(predictions)
+                                break
+                    if resolved is None or total is None:
+                        print("\n⚠️ Could not parse evaluation results")
+                        return None, eval_time
+
+                score = (resolved / total) * 100 if total else 0
+                print(f"\n📊 Real Evaluation Score: {score:.2f}% ({resolved}/{total} issues fixed)")
+                return score, eval_time
+                    
+            except subprocess.TimeoutExpired:
+                print("\n⚠️ Evaluation timed out")
+                return None, 1800
+            except Exception as e:
+                print(f"\n⚠️ Evaluation error: {e}")
+                return None, 0
 
 def main():
     parser = argparse.ArgumentParser(

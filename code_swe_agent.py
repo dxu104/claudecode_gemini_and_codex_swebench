@@ -182,6 +182,10 @@ class CodeSWEAgent:
             prediction = self.patch_extractor.format_for_swebench(
                 patch, instance_id, self.model_alias or f"{self.backend}-code"
             )
+            
+            # Add num_files if available (for tunable datasets)
+            if "num_files" in instance:
+                prediction["num_files"] = instance["num_files"]
 
             self._save_result(instance_id, result, patch)
 
