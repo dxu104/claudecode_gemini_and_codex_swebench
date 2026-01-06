@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This project provides an empirical framework for measuring the performance of code-focused language models like Claude Code, Codex, and Gemini on real-world software engineering tasks. It was built to provide objective, reproducible metrics that allow users to assess these tools for themselves, rather than relying on anecdotal reports or marketing claims.
+This project provides an empirical framework for measuring the performance of code-focused language models like Claude Code, Codex, Gemini, and Cline on real-world software engineering tasks. It was built to provide objective, reproducible metrics that allow users to assess these tools for themselves, rather than relying on anecdotal reports or marketing claims.
 
 The SWE-bench benchmark presents the model with actual GitHub issues from popular open-source projects and measures its ability to generate patches that successfully resolve these issues. This provides a concrete, measurable answer to the question: "How well do these code models actually perform on real software engineering tasks?"
 
@@ -11,10 +11,11 @@ The SWE-bench benchmark presents the model with actual GitHub issues from popula
 ## Getting Started in 5 Minutes
 
 ```bash
-# Assuming you have Python, a code model CLI (Claude or Codex), and Docker installed:
+# Assuming you have Python, a code model CLI (Claude, Codex, Gemini, or Cline), and Docker installed:
 # Replace `python` with `python3` on Linux/macOS or `py` on Windows if needed.
-git clone https://github.com/jimmc414/claudecode_n_codex_swebench.git
-cd claudecode_n_codex_swebench
+git clone https://github.com/dxu104/claudecode_gemini_and_codex_swebench.git
+cd claudecode_gemini_and_codex_swebench
+git checkout feature/longcodebench-integration  # Use the LongCodeBench integration branch
 python -m pip install -r requirements.txt
 python swe_bench.py run --limit 1  # Run your first test (~10 min)
 python swe_bench.py check           # See your results
@@ -29,6 +30,7 @@ For detailed setup instructions, see [Prerequisites](#prerequisites) and [Instal
 python swe_bench.py run --limit 1               # Claude Code (default)
 python swe_bench.py run --limit 1 --backend codex  # Codex
 python swe_bench.py run --limit 1 --backend gemini # Gemini
+python swe_bench.py run --limit 1 --backend cline  # Cline
 
 # 2. Check your results
 python swe_bench.py check
@@ -37,7 +39,10 @@ python swe_bench.py check
 python swe_bench.py quick
 
 # 4. Run LongCodeBench dataset (tunable SWE-bench with context files)
-python swe_bench.py run --dataset <longcodebench-dataset-name> --longcodebench --limit 10
+python swe_bench.py run --dataset Steefano/LCB --longcodebench --limit 10
+
+# 5. Process all k-value variants of a specific problem
+python swe_bench.py run --dataset ./tunable_dataset --longcodebench --backend cline --instance-id astropy__astropy-12907
 ```
 
 
@@ -50,7 +55,7 @@ Before starting, ensure you have:
    python --version  # or python3/py --version
    ```
 
-2. **Claude Code, Codex, or Gemini CLI installed and logged in**
+2. **Claude Code, Codex, Gemini, or Cline CLI installed and logged in**
    ```bash
    # Claude Code
    claude --version  # Should work without errors
@@ -58,6 +63,8 @@ Before starting, ensure you have:
    codex --version   # Should work without errors
    # Gemini
    gemini --version  # Should work without errors
+   # Cline
+   cline version     # Should work without errors
    # If not logged in, run the relevant CLI
    ```
 
@@ -91,6 +98,7 @@ python -m pip install -r requirements.txt  # Use python3/py as needed
 python swe_bench.py list-models               # Claude models
 python swe_bench.py list-models --backend codex  # Codex models
 python swe_bench.py list-models --backend gemini # Gemini models
+python swe_bench.py list-models --backend cline  # Cline models
 
 # Optional: Quick test to verify full setup
 python swe_bench.py run --limit 1 --no-eval  # Test without Docker (2-5 min)
@@ -104,6 +112,7 @@ If you get errors:
 - **"Claude CLI not found"**: Install from https://claude.ai/download
 - **"Codex CLI not found"**: Ensure `codex` is installed and in your PATH
 - **"Gemini CLI not found"**: Ensure `gemini` is installed and in your PATH
+- **"Cline CLI not found"**: Install Cline from https://github.com/cline-dev/cline or via npm: `npm install -g @cline/cli`
 - **"Docker daemon not running"**: Start Docker Desktop or `sudo systemctl start docker`
 - **"swebench not found"**: Run `pip install swebench`
 - **Out of memory**: Increase Docker memory in Docker Desktop settings
@@ -126,6 +135,7 @@ python swe_bench.py check          # View scores and statistics
 python swe_bench.py list-models    # Show available models (Claude by default)
 python swe_bench.py list-models --backend codex  # Show Codex models
 python swe_bench.py list-models --backend gemini # Show Gemini models
+python swe_bench.py list-models --backend cline  # Show Cline models
 ```
 
 ### Running Benchmarks
@@ -147,8 +157,9 @@ python swe_bench.py run --quick --no-eval          # Skip Docker evaluation
 python swe_bench.py run --limit 20 --max-workers 4 # More parallel containers
 
 # LongCodeBench support (tunable SWE-bench with context files)
-python swe_bench.py run --dataset <longcodebench-dataset> --longcodebench --limit 10
-python swe_bench.py run --dataset <longcodebench-dataset> --longcodebench --context-length 20 --limit 10
+python swe_bench.py run --dataset Steefano/LCB --longcodebench --limit 10
+python swe_bench.py run --dataset ./tunable_dataset --longcodebench --backend cline --max-k 5 --limit 10
+python swe_bench.py run --dataset ./tunable_dataset --longcodebench --instance-id astropy__astropy-12907
 
 # Dataset selection
 python swe_bench.py run --dataset princeton-nlp/SWE-bench_Lite --limit 10
@@ -247,6 +258,11 @@ python swe_bench.py list-models
 - `balanced`: Maps to sonnet-3.7
 - `fast`: Maps to sonnet-3.5
 
+**Cline Backend:**
+- Cline models are configured via `cline auth` command
+- The model parameter is ignored for Cline (uses default configured model)
+- See Cline documentation for model configuration
+
 You can also use any model name accepted by Claude's `/model` command, including experimental or future models not yet in the registry.
 
 ## LongCodeBench Support
@@ -255,43 +271,166 @@ This project now supports **LongCodeBench** tunable SWE-bench datasets, which in
 
 ### What is LongCodeBench?
 
-LongCodeBench is a variant of SWE-bench where each problem statement is provided with a varying number of context files (k files). This enables testing models' coding capabilities at different context lengths, from small (k=5) to large (k=100+).
+LongCodeBench is a variant of SWE-bench where each problem statement is provided with a varying number of context files (k files). This enables testing models' coding capabilities at different context lengths, from small (k=0, no context files) to large (k=100+).
+
+**Key Features:**
+- **Tunable Context**: Each problem has multiple variants with different numbers of context files (k=0, k=1, k=2, ..., k=max_k-1)
+- **Automatic K-value Grouping**: Evaluation automatically groups results by k-value for detailed analysis
+- **Context Window Analysis**: Automatically displays context window sizes (in tokens) for each k-value
+- **Flexible Filtering**: Filter instances by maximum k-value or process all variants of a specific problem
+
+### Creating Tunable Datasets
+
+You can create your own tunable SWE-bench dataset from the original dataset:
+
+```bash
+# Create tunable dataset with max_k=20 (creates k=0 to k=19 variants)
+python swe_bench.py make-tunable \
+    --dataset princeton-nlp/SWE-bench_Verified \
+    --splits test \
+    --output-dir ./tunable_dataset \
+    --prompt-style style-3 \
+    --max-k 20 \
+    --retrieval-type bm25
+```
+
+This will:
+1. Load the original SWE-bench dataset
+2. Generate BM25 retrieval results for relevant files
+3. Create variants for each problem (k=0 to k=max_k-1)
+4. Save the tunable dataset to the output directory
+
+**Requirements for make-tunable:**
+- SWE-bench must be installed from source: `git clone https://github.com/princeton-nlp/SWE-bench.git && cd SWE-bench && pip install -e .`
+- Additional dependencies: `jedi` (for BM25 retrieval): `pip install jedi`
 
 ### Using LongCodeBench Datasets
 
+#### From HuggingFace
+
 ```bash
-# Run with LongCodeBench dataset (auto-detected by dataset name)
-python swe_bench.py run --dataset <longcodebench-dataset-name> --limit 10
+# Run with LongCodeBench dataset from HuggingFace (auto-detected)
+python swe_bench.py run --dataset Steefano/LCB --longcodebench --limit 10
 
-# Explicitly specify LongCodeBench mode
-python swe_bench.py run --dataset <longcodebench-dataset-name> --longcodebench --limit 10
+# Specify context length (e.g., "32K", "128K", "1M")
+python swe_bench.py run --dataset Steefano/LCB --longcodebench --context-length 32K --limit 10
 
-# Specify context length (k value) if dataset has multiple k values
-python swe_bench.py run --dataset <longcodebench-dataset-name> --longcodebench --context-length 20 --limit 10
+# Filter by maximum k-value (only instances with num_files <= max_k)
+python swe_bench.py run --dataset Steefano/LCB --longcodebench --max-k 5 --limit 10
+```
+
+#### From Local Directory
+
+```bash
+# Use locally generated tunable dataset
+python swe_bench.py run \
+    --dataset ./tunable_dataset \
+    --longcodebench \
+    --backend cline \
+    --max-k 10 \
+    --limit 10
+```
+
+#### Process All K-value Variants of a Specific Problem
+
+```bash
+# Process all k-value variants (k=0 to k=9) for a specific instance
+python swe_bench.py run \
+    --dataset ./tunable_dataset \
+    --longcodebench \
+    --backend cline \
+    --instance-id astropy__astropy-12907
+
+# This will:
+# 1. Load all k-value variants for the specified instance
+# 2. Generate patches for each variant
+# 3. Evaluate each k-value group separately
+# 4. Display results grouped by k-value with context window analysis
+```
+
+### LongCodeBench Command-Line Options
+
+```bash
+# Basic LongCodeBench run
+python swe_bench.py run --dataset <dataset> --longcodebench --limit 10
+
+# Filter by maximum k-value
+python swe_bench.py run --dataset <dataset> --longcodebench --max-k 5 --limit 10
+
+# Process specific instance (all k-value variants)
+python swe_bench.py run --dataset <dataset> --longcodebench --instance-id <instance_id>
+
+# Specify context length (for datasets with multiple context lengths)
+python swe_bench.py run --dataset <dataset> --longcodebench --context-length 32K --limit 10
 
 # With specific backend and model
-python swe_bench.py run --dataset <longcodebench-dataset-name> --longcodebench --backend cline --model opus-4.1 --limit 10
+python swe_bench.py run \
+    --dataset ./tunable_dataset \
+    --longcodebench \
+    --backend cline \
+    --max-k 10 \
+    --limit 10
 ```
 
 ### How It Works
 
-1. **Automatic Detection**: The system automatically detects LongCodeBench datasets by their name patterns (e.g., containing "longcodebench" or "swebench-tuned").
+1. **Automatic Detection**: The system automatically detects LongCodeBench datasets by their name patterns (e.g., containing "longcodebench", "swebench-tuned", or "LCB").
 
-2. **Context Files**: When a LongCodeBench instance contains `context_files`, these are automatically included in the prompt to guide the model.
+2. **Context Files**: When a LongCodeBench instance contains context files, these are automatically included in the prompt to guide the model. The `text` field contains the full context including problem statement and relevant file contents.
 
-3. **Backward Compatibility**: Standard SWE-bench datasets continue to work exactly as before.
+3. **K-value Grouped Evaluation**: For tunable datasets, predictions are automatically grouped by k-value (num_files) and evaluated separately. Results show:
+   - Individual scores for each k-value group
+   - Overall score across all k-values
+   - Context window size analysis (in tokens) for each k-value
+
+4. **Context Window Analysis**: When loading LongCodeBench datasets, the system automatically analyzes and displays:
+   - Average, minimum, and maximum token counts for each k-value
+   - Character counts for each k-value
+   - Token estimation uses: 1 token ≈ 0.75 words
+
+5. **Backward Compatibility**: Standard SWE-bench datasets continue to work exactly as before.
 
 ### Finding LongCodeBench Datasets
 
-LongCodeBench datasets are typically available on HuggingFace. Look for datasets with names like:
-- `Zteefano/longcodebench-swebench-tuned-k20`
-- Or similar naming patterns
+LongCodeBench datasets are available on HuggingFace:
+- `Steefano/LCB`: Official LongCodeBench dataset with multiple context lengths (32K, 64K, 128K, 256K, 512K, 1M)
+- Custom tunable datasets: Generated using the `make-tunable` command
+
+### Example: Complete Workflow
+
+```bash
+# 1. Create a tunable dataset
+python swe_bench.py make-tunable \
+    --dataset princeton-nlp/SWE-bench_Verified \
+    --splits test \
+    --output-dir ./tunable_dataset \
+    --prompt-style style-3 \
+    --max-k 10 \
+    --retrieval-type bm25
+
+# 2. Run evaluation on all k-value variants of a specific problem
+python swe_bench.py run \
+    --dataset ./tunable_dataset \
+    --longcodebench \
+    --backend cline \
+    --instance-id astropy__astropy-12907
+
+# 3. Or run on multiple instances with k-value filtering
+python swe_bench.py run \
+    --dataset ./tunable_dataset \
+    --longcodebench \
+    --backend cline \
+    --max-k 5 \
+    --limit 10
+```
 
 ### Notes
 
 - Context files are provided as hints but models can still search the codebase independently
 - Different context lengths may affect processing time and API costs
 - Evaluation uses the same SWE-bench harness, ensuring compatibility
+- K-value grouped evaluation provides detailed insights into how context size affects performance
+- Context window analysis helps understand the relationship between k-value and actual token usage
 
 ## Understanding Scores
 
@@ -327,19 +466,26 @@ Based on empirical testing with SWE-bench:
 ## Project Structure
 
 ```
-claudecode_n_codex_swebench/
+claudecode_gemini_and_codex_swebench/
 ├── swe_bench.py              # Main unified tool (all commands)
-├── code_swe_agent.py         # Core agent for Claude Code or Codex
+├── code_swe_agent.py         # Core agent for Claude Code, Codex, Gemini, or Cline
+├── run_benchmark_with_eval.py # Benchmark runner with evaluation
+├── evaluate_predictions.py    # Evaluation utilities
 ├── USAGE.md                  # Detailed command usage guide
-├── benchmark_scores.log      # Results log (JSON lines format)
+├── benchmark_scores.log       # Results log (JSON lines format)
 ├── requirements.txt          # Python dependencies
 │
 ├── utils/                    # Core utilities
 │   ├── claude_interface.py  # Claude Code CLI interface
+│   ├── codex_interface.py   # Codex CLI interface
+│   ├── gemini_interface.py  # Gemini CLI interface
+│   ├── cline_interface.py   # Cline CLI interface
 │   ├── prompt_formatter.py  # Formats issues into prompts
 │   ├── patch_extractor.py   # Extracts patches from responses
 │   ├── model_registry.py    # Model definitions and aliases
-│   └── longcodebench_loader.py  # LongCodeBench dataset loader
+│   ├── longcodebench_loader.py  # LongCodeBench dataset loader
+│   ├── context_analyzer.py  # Context window size analyzer
+│   └── make_tunable_dataset.py  # Create tunable datasets
 │
 ├── prompts/                  # Prompt templates
 │   ├── swe_bench_prompt.txt # Default prompt
@@ -347,7 +493,7 @@ claudecode_n_codex_swebench/
 │   └── react_style_prompt.txt
 │
 ├── predictions/              # Generated predictions (JSONL)
-├── results/                  # Detailed Claude outputs
+├── results/                  # Detailed model outputs
 ├── evaluation_results/       # Docker evaluation results
 └── backup/                   # Archived/unused files
 ```
