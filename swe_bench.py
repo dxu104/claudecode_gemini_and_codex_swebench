@@ -43,6 +43,7 @@ def run_command(args):
         longcodebench=args.longcodebench if hasattr(args, 'longcodebench') else False,
         context_length=args.context_length if hasattr(args, 'context_length') else None,
         max_k=args.max_k if hasattr(args, 'max_k') else None,
+        instance_id=args.instance_id if hasattr(args, 'instance_id') else None,
     )
     
     # Set default limit if not specified
@@ -75,6 +76,8 @@ def run_command(args):
         print(f"Context Length: {args.context_length}")
     if hasattr(args, 'max_k') and args.max_k:
         print(f"Max K: {args.max_k} (only instances with num_files <= {args.max_k})")
+    if hasattr(args, 'instance_id') and args.instance_id:
+        print(f"Instance ID: {args.instance_id} (will process all k-value variants)")
     print(f"Evaluation: {'DISABLED' if args.no_eval else 'ENABLED'}")
     print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
@@ -441,6 +444,7 @@ Examples:
     run_parser.add_argument('--longcodebench', action='store_true', help='Explicitly indicate this is a LongCodeBench dataset')
     run_parser.add_argument('--context-length', type=str, metavar='K', help='Context length for LongCodeBench datasets (e.g., "32K", "128K", "1M" or integer)')
     run_parser.add_argument('--max-k', type=int, metavar='K', help='Maximum number of context files (k value) to include. Only instances with num_files <= max_k will be used.')
+    run_parser.add_argument('--instance-id', type=str, metavar='ID', help='Specific instance ID to process. For tunable datasets, this will process all k-value variants of this instance.')
     
     # EVAL command
     eval_parser = subparsers.add_parser('eval', help='Evaluate past predictions')

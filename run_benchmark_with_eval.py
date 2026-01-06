@@ -17,7 +17,7 @@ from datasets import load_dataset
 from utils.longcodebench_loader import is_longcodebench_dataset
 
 class EnhancedBenchmarkRunner:
-    def __init__(self, model=None, backend="claude", longcodebench=False, context_length=None, max_k=None):
+    def __init__(self, model=None, backend="claude", longcodebench=False, context_length=None, max_k=None, instance_id=None):
         self.base_dir = Path.cwd()
         self.log_file = self.base_dir / "benchmark_scores.log"
         self.predictions_dir = self.base_dir / "predictions"
@@ -28,6 +28,7 @@ class EnhancedBenchmarkRunner:
         self.longcodebench = longcodebench
         self.context_length = context_length
         self.max_k = max_k
+        self.instance_id = instance_id
         
         # Create directories
         self.predictions_dir.mkdir(exist_ok=True)
@@ -91,6 +92,9 @@ class EnhancedBenchmarkRunner:
         
         if self.max_k is not None:
             cmd.extend(["--max-k", str(self.max_k)])
+        
+        if self.instance_id is not None:
+            cmd.extend(["--instance-id", self.instance_id])
         
         try:
             start_time = time.time()
@@ -289,13 +293,16 @@ def main():
                        help="Context length for LongCodeBench datasets (e.g., '32K', '128K', '1M' or integer)")
     parser.add_argument("--max-k", type=int, metavar="K",
                        help="Maximum number of context files (k value) to include. Only instances with num_files <= max_k will be used.")
+    parser.add_argument("--instance-id", type=str, metavar="ID",
+                       help="Specific instance ID to process. For tunable datasets, this will process all k-value variants of this instance.")
     
     args = parser.parse_args()
     
     runner = EnhancedBenchmarkRunner(
         longcodebench=args.longcodebench,
         context_length=args.context_length,
-        max_k=args.max_k if hasattr(args, 'max_k') else None
+        max_k=args.max_k if hasattr(args, 'max_k') else None,
+        instance_id=args.instance_id if hasattr(args, 'instance_id') else None
     )
     
     print("="*60)

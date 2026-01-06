@@ -273,10 +273,11 @@ def load_longcodebench_dataset(
     dataset_name: str,
     split: str = "test",
     context_length: Optional[Union[int, str]] = None,
-    max_k: Optional[int] = None
+    max_k: Optional[int] = None,
+    instance_id: Optional[str] = None
 ) -> Dataset:
     """
-    Load a LongCodeBench dataset, optionally filtering by context length and max_k.
+    Load a LongCodeBench dataset, optionally filtering by context length, max_k, and instance_id.
     
     Args:
         dataset_name: HuggingFace dataset identifier
@@ -284,6 +285,8 @@ def load_longcodebench_dataset(
         context_length: Optional context length to filter by (if dataset has multiple k values)
         max_k: Optional maximum number of context files (k value) to filter by. 
                Only instances with num_files <= max_k will be included.
+        instance_id: Optional instance ID to filter by. Only instances with this instance_id will be included.
+                     This allows testing all k-value variants of a specific problem.
         
     Returns:
         Loaded dataset
@@ -293,6 +296,16 @@ def load_longcodebench_dataset(
         # 使用 zip 文件加载方法（会自动处理 split 回退）
         print(f"[LongCodeBench] Loading from zip file for {dataset_name}")
         dataset = load_longcodebench_from_zip(dataset_name, split, context_length)
+        
+        # 如果指定了 instance_id，先过滤实例
+        if instance_id is not None:
+            if 'instance_id' in dataset.features:
+                original_size = len(dataset)
+                dataset = dataset.filter(lambda x: x.get('instance_id') == instance_id)
+                filtered_size = len(dataset)
+                print(f"[LongCodeBench] Filtered by instance_id={instance_id}: {original_size} -> {filtered_size} instances")
+            else:
+                print(f"[LongCodeBench] Warning: 'instance_id' field not found, cannot filter by instance_id")
         
         # 如果指定了 max_k，过滤实例
         if max_k is not None:
@@ -334,6 +347,17 @@ def load_longcodebench_dataset(
                     f"Dataset {dataset_name} has context length {dataset_k}, "
                     f"but requested {context_length}"
                 )
+    
+    # 如果指定了 instance_id，过滤实例（优先于 max_k）
+    if instance_id is not None:
+        if 'instance_id' in dataset.features:
+            original_size = len(dataset)
+            dataset = dataset.filter(lambda x: x.get('instance_id') == instance_id)
+            filtered_size = len(dataset)
+            if original_size != filtered_size:
+                print(f"[LongCodeBench] Filtered by instance_id={instance_id}: {original_size} -> {filtered_size} instances")
+        else:
+            print(f"[LongCodeBench] Warning: 'instance_id' field not found, cannot filter by instance_id")
     
     # If max_k is specified, filter instances by num_files
     if max_k is not None:

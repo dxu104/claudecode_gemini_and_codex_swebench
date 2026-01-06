@@ -43,7 +43,8 @@ class CodeSWEAgent:
                  backend: str = DEFAULT_BACKEND,
                  longcodebench: bool = False,
                  context_length: Optional[int] = None,
-                 max_k: Optional[int] = None):
+                 max_k: Optional[int] = None,
+                 instance_id: Optional[str] = None):
         self.backend = (backend or DEFAULT_BACKEND).lower()
         if self.backend == "codex":
             self.interface = CodexCodeInterface()
@@ -69,6 +70,7 @@ class CodeSWEAgent:
         self.longcodebench = longcodebench
         self.context_length = context_length
         self.max_k = max_k
+        self.instance_id = instance_id
 
         # Create directories if they don't exist
         self.results_dir.mkdir(exist_ok=True)
@@ -237,9 +239,17 @@ class CodeSWEAgent:
                 print(f"Using context length: {context_length}")
             else:
                 print("Using default context length: 32K")
+            if self.instance_id is not None:
+                print(f"Filtering by instance_id: {self.instance_id} (will process all k-value variants)")
             if self.max_k is not None:
                 print(f"Filtering by max_k: {self.max_k} (only instances with num_files <= {self.max_k})")
-            dataset = load_longcodebench_dataset(dataset_name, split=split, context_length=context_length, max_k=self.max_k)
+            dataset = load_longcodebench_dataset(
+                dataset_name, 
+                split=split, 
+                context_length=context_length, 
+                max_k=self.max_k,
+                instance_id=self.instance_id
+            )
             print(f"[LongCodeBench] Successfully loaded {len(dataset)} instances")
             print("=" * 60)
         else:
@@ -281,7 +291,13 @@ class CodeSWEAgent:
             context_length = self.context_length
             if context_length is None:
                 context_length = extract_context_length(dataset_name)
-            dataset = load_longcodebench_dataset(dataset_name, split="test", context_length=context_length, max_k=self.max_k)
+            dataset = load_longcodebench_dataset(
+                dataset_name, 
+                split="test", 
+                context_length=context_length, 
+                max_k=self.max_k,
+                instance_id=instance_id
+            )
         else:
             dataset = load_dataset(dataset_name, split="test")
         
@@ -327,6 +343,8 @@ def main():
                        help="Context length for LongCodeBench datasets (e.g., '32K', '128K', '1M' or integer)")
     parser.add_argument("--max-k", type=int, metavar="K",
                        help="Maximum number of context files (k value) to include. Only instances with num_files <= max_k will be used.")
+    parser.add_argument("--instance-id", type=str, metavar="ID",
+                       help="Specific instance ID to process. For tunable datasets, this will process all k-value variants of this instance.")
     
     args = parser.parse_args()
     
@@ -357,7 +375,8 @@ def main():
         backend,
         longcodebench=args.longcodebench if hasattr(args, 'longcodebench') else False,
         context_length=args.context_length if hasattr(args, 'context_length') else None,
-        max_k=args.max_k if hasattr(args, 'max_k') else None
+        max_k=args.max_k if hasattr(args, 'max_k') else None,
+        instance_id=args.instance_id if hasattr(args, 'instance_id') else None
     )
     
     # Run on specific instance or dataset
