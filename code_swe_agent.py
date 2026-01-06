@@ -257,6 +257,14 @@ class CodeSWEAgent:
             print(f"[LongCodeBench] Successfully loaded {len(dataset)} instances")
             if self.instance_id:
                 print(f"[LongCodeBench] Will process all {len(dataset)} k-value variants for instance_id={self.instance_id}")
+            
+            # Analyze context window sizes by k-value
+            try:
+                from utils.context_analyzer import analyze_dataset_context
+                analyze_dataset_context(dataset, instance_id=self.instance_id, print_results=True)
+            except Exception as e:
+                print(f"[LongCodeBench] Warning: Could not analyze context sizes: {e}")
+            
             print("=" * 60)
         else:
             # Standard SWE-bench dataset
