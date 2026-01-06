@@ -326,6 +326,7 @@ def load_longcodebench_dataset(
         print(f"[LongCodeBench] Loading from local path: {dataset_name}")
         try:
             dataset_dict = load_from_disk(dataset_name)
+            print(f"[LongCodeBench] Loaded dataset dict with splits: {list(dataset_dict.keys())}")
             # 尝试获取指定的 split
             if split in dataset_dict:
                 dataset = dataset_dict[split]
@@ -340,6 +341,7 @@ def load_longcodebench_dataset(
                 raise ValueError(
                     f"Split '{split}' not found. Available splits: {available}"
                 )
+            print(f"[LongCodeBench] Loaded {len(dataset)} instances from split before filtering")
         except Exception as e:
             raise ValueError(
                 f"Failed to load dataset from local path {dataset_name}: {e}"
@@ -378,12 +380,21 @@ def load_longcodebench_dataset(
     if instance_id is not None:
         if 'instance_id' in dataset.features:
             original_size = len(dataset)
+            print(f"[LongCodeBench] Filtering by instance_id={instance_id} from {original_size} instances...")
+            # 保存原始数据集用于调试
+            original_dataset = dataset
             dataset = dataset.filter(lambda x: x.get('instance_id') == instance_id)
             filtered_size = len(dataset)
-            if original_size != filtered_size:
-                print(f"[LongCodeBench] Filtered by instance_id={instance_id}: {original_size} -> {filtered_size} instances")
+            print(f"[LongCodeBench] Filtered by instance_id={instance_id}: {original_size} -> {filtered_size} instances")
+            if filtered_size == 0:
+                print(f"[LongCodeBench] WARNING: No instances found with instance_id={instance_id}")
+                # 显示前几个 instance_id 以便调试
+                sample_size = min(5, original_size)
+                sample_ids = [x.get('instance_id', 'N/A') for x in original_dataset.select(range(sample_size))]
+                print(f"[LongCodeBench] Sample instance_ids in dataset: {sample_ids}")
         else:
             print(f"[LongCodeBench] Warning: 'instance_id' field not found, cannot filter by instance_id")
+            print(f"[LongCodeBench] Available features: {list(dataset.features.keys())[:10]}")
     
     # If max_k is specified, filter instances by num_files
     if max_k is not None:
@@ -391,18 +402,17 @@ def load_longcodebench_dataset(
             original_size = len(dataset)
             dataset = dataset.filter(lambda x: x.get('num_files', 0) <= max_k)
             filtered_size = len(dataset)
-            if original_size != filtered_size:
-                print(f"[LongCodeBench] Filtered by max_k={max_k}: {original_size} -> {filtered_size} instances")
+            print(f"[LongCodeBench] Filtered by max_k={max_k}: {original_size} -> {filtered_size} instances")
         elif 'k' in dataset.features:
             # 如果数据集有 'k' 字段而不是 'num_files'
             original_size = len(dataset)
             dataset = dataset.filter(lambda x: x.get('k', 0) <= max_k)
             filtered_size = len(dataset)
-            if original_size != filtered_size:
-                print(f"[LongCodeBench] Filtered by max_k={max_k}: {original_size} -> {filtered_size} instances")
+            print(f"[LongCodeBench] Filtered by max_k={max_k}: {original_size} -> {filtered_size} instances")
         else:
             print(f"[LongCodeBench] Warning: 'num_files' or 'k' field not found, cannot filter by max_k")
     
+    print(f"[LongCodeBench] Final dataset size: {len(dataset)} instances")
     return dataset
 
 
