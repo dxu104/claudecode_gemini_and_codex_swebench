@@ -288,36 +288,47 @@ class EnhancedBenchmarkRunner:
                     k_eval_time = time.time() - start_time
                     total_eval_time += k_eval_time
                     
+                    # Check if there were network errors but evaluation might have completed
+                    output_text = ''.join(output_lines)
+                    has_network_error = 'ReadTimeout' in output_text or 'Connection timed out' in output_text
+                    if has_network_error and process.returncode != 0:
+                        print(f"\n⚠️  Network timeout error detected for k={k_value}, but checking if evaluation completed...")
+                    
                     # Parse results for this k-value
+                    # Note: k_total should always be len(k_predictions), not the total_instances from evaluation
+                    # because evaluation reports total_instances for the entire dataset, not just this k-value group
+                    k_total = len(k_predictions)
                     json_path = self.eval_results_dir / f"{model_name}.{k_run_id}.json"
-                    k_resolved = k_total = None
+                    k_resolved = None
                     if json_path.exists():
                         try:
                             with open(json_path) as f:
                                 data = json.load(f)
                             k_resolved = data.get("resolved_instances", 0)
-                            k_total = data.get("total_instances", len(k_predictions))
                             results_by_k[k_value] = data
                         except (OSError, json.JSONDecodeError) as exc:
                             logging.warning(f"Failed to parse evaluation JSON for k={k_value}: {exc}")
                     
-                    if k_resolved is None or k_total is None:
+                    if k_resolved is None:
                         # Fallback to regex parsing
-                        output_text = ''.join(output_lines)
                         import re
                         match = re.search(r'Instances resolved: (\d+)', output_text)
                         if match:
                             k_resolved = int(match.group(1))
-                            k_total = len(k_predictions)
                         else:
+                            # If we can't find resolved count, assume 0 (evaluation failed)
                             k_resolved = 0
-                            k_total = len(k_predictions)
+                            if has_network_error:
+                                print(f"⚠️  Could not parse results for k={k_value} due to network error")
                     
                     k_score = (k_resolved / k_total * 100) if k_total else 0
                     total_resolved += k_resolved
-                    total_instances += k_total
+                    total_instances += k_total  # This is now correct: len(k_predictions) for each group
                     
-                    print(f"\n📊 k={k_value} Evaluation Score: {k_score:.2f}% ({k_resolved}/{k_total} issues fixed)")
+                    if has_network_error and k_resolved > 0:
+                        print(f"\n📊 k={k_value} Evaluation Score: {k_score:.2f}% ({k_resolved}/{k_total} issues fixed) [Note: Network timeout occurred but evaluation completed]")
+                    else:
+                        print(f"\n📊 k={k_value} Evaluation Score: {k_score:.2f}% ({k_resolved}/{k_total} issues fixed)")
                     
                     # Clean up temporary file
                     if tmp_eval_file.exists():
@@ -337,7 +348,8 @@ class EnhancedBenchmarkRunner:
                 if "error" not in results_by_k[k_value]:
                     k_data = results_by_k[k_value]
                     k_resolved = k_data.get("resolved_instances", 0)
-                    k_total = k_data.get("total_instances", 0)
+                    # Use the actual number of predictions for this k-value, not total_instances from evaluation
+                    k_total = len(predictions_by_k[k_value])
                     k_score = (k_resolved / k_total * 100) if k_total else 0
                     print(f"  k={k_value}: {k_score:.2f}% ({k_resolved}/{k_total} issues fixed)")
                 else:
