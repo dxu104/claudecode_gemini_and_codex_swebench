@@ -101,13 +101,47 @@ class EnhancedBenchmarkRunner:
         
         try:
             start_time = time.time()
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)  # 2 hour timeout
+            timeout_seconds = 7200  # 2 hours
+            # Use Popen to stream output in real-time
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True
+            )
+            
+            # Print output in real-time with timeout handling
+            output_lines = []
+            timeout_reached = False
+            end_time = start_time + timeout_seconds
+            
+            for line in iter(process.stdout.readline, ''):
+                current_time = time.time()
+                if current_time > end_time:
+                    timeout_reached = True
+                    process.kill()
+                    print(f"\n❌ Inference timed out after {timeout_seconds} seconds")
+                    break
+                print(line, end='', flush=True)
+                output_lines.append(line)
+            
+            if not timeout_reached:
+                process.wait()
+            
             execution_time = time.time() - start_time
             
-            if result.returncode != 0:
+            if timeout_reached:
+                return None, execution_time
+            
+            if process.returncode != 0:
                 print(f"⚠️ Warning: Inference had issues but continuing...")
-                if result.stderr:
-                    print(f"Stderr: {result.stderr[:500]}")
+                if output_lines:
+                    # Show last 20 lines of output for debugging
+                    print(f"Last 20 lines of output:")
+                    for line in output_lines[-20:]:
+                        print(f"  {line.rstrip()}")
             
             # Find the latest prediction file
             pred_files = sorted(self.predictions_dir.glob("predictions_*.jsonl"), reverse=True)
@@ -120,11 +154,12 @@ class EnhancedBenchmarkRunner:
             print(f"✅ Predictions saved to: {latest_pred}")
             return str(latest_pred), execution_time
             
-        except subprocess.TimeoutExpired:
-            print("❌ Inference timed out after 2 hours")
-            return None, 7200
         except Exception as e:
+            if 'process' in locals() and process.poll() is None:
+                process.kill()
             print(f"❌ Error during inference: {e}")
+            import traceback
+            traceback.print_exc()
             return None, 0
             
     def calculate_generation_score(self, prediction_file):
