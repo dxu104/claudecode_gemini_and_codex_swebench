@@ -9,29 +9,46 @@ from typing import Dict, List, Optional
 from collections import defaultdict
 from datasets import Dataset
 
+try:
+    import tiktoken
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    TIKTOKEN_AVAILABLE = False
 
-def count_tokens(text: str) -> int:
+
+def count_tokens(text: str, model: str = "gpt-4") -> int:
     """
-    Estimate token count from text.
+    Count tokens in text using tiktoken (GPT-4 encoding).
     
-    Uses the approximation: 1 token ≈ 0.75 words
-    This is a common approximation for English text and code.
+    Falls back to word-based estimation if tiktoken is not available.
     
     Args:
         text: Input text string
+        model: Model name for encoding (default: "gpt-4")
         
     Returns:
-        Estimated token count
+        Token count (or -1 if tiktoken is not available and estimation fails)
     """
     if not text:
         return 0
     
-    # Count words (split by whitespace)
+    # Try to use tiktoken for accurate token counting
+    if TIKTOKEN_AVAILABLE:
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+            return len(encoding.encode(text))
+        except Exception:
+            # If specified model doesn't exist, try cl100k_base (GPT-4 and GPT-3.5 use this)
+            try:
+                encoding = tiktoken.get_encoding("cl100k_base")
+                return len(encoding.encode(text))
+            except Exception:
+                pass
+    
+    # Fallback to word-based estimation if tiktoken is not available
+    # Uses the approximation: 1 token ≈ 0.75 words
     words = text.split()
     num_words = len(words)
-    
-    # Convert to tokens: 1 token = 0.75 words, so 1 word ≈ 1.33 tokens
-    # More accurately: tokens = words / 0.75 = words * 1.333...
     tokens = int(num_words / 0.75)
     
     return tokens
@@ -127,7 +144,10 @@ def print_context_analysis(analysis: Dict, instance_id: Optional[str] = None):
         print(f"{k_value:<10} {stats['count']:<8} {stats['avg_tokens']:<15,} {stats['min_tokens']:<15,} {stats['max_tokens']:<15,} {stats['avg_chars']:<15,}")
     
     print("=" * 80)
-    print(f"Note: Token count estimation uses 1 token ≈ 0.75 words")
+    if TIKTOKEN_AVAILABLE:
+        print(f"Note: Token count uses tiktoken (GPT-4 encoding: cl100k_base)")
+    else:
+        print(f"Note: Token count estimation uses 1 token ≈ 0.75 words (tiktoken not available)")
     print("=" * 80 + "\n")
 
 
