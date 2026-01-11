@@ -37,6 +37,9 @@ from code_swe_agent import DEFAULT_BACKEND
 
 def run_command(args):
     """Handle 'run' subcommand - run new benchmarks"""
+    # Handle timeout: 0 means unlimited (None), otherwise use provided value
+    timeout_value = None if (hasattr(args, 'timeout') and args.timeout == 0) else (args.timeout if hasattr(args, 'timeout') and args.timeout else None)
+    
     runner = EnhancedBenchmarkRunner(
         model=args.model if hasattr(args, 'model') else None,
         backend=args.backend if hasattr(args, 'backend') and args.backend else DEFAULT_BACKEND,
@@ -44,6 +47,7 @@ def run_command(args):
         context_length=args.context_length if hasattr(args, 'context_length') else None,
         max_k=args.max_k if hasattr(args, 'max_k') else None,
         instance_id=args.instance_id if hasattr(args, 'instance_id') else None,
+        timeout=timeout_value
     )
     
     # Set default limit if not specified
@@ -82,6 +86,12 @@ def run_command(args):
         print(f"Max K: {args.max_k} (only instances with num_files <= {args.max_k})")
     if hasattr(args, 'instance_id') and args.instance_id:
         print(f"Instance ID: {args.instance_id} (will process all k-value variants)")
+    if hasattr(args, 'timeout'):
+        timeout_value = None if args.timeout == 0 else (args.timeout if args.timeout else 28800)
+        if timeout_value is None:
+            print(f"Inference Timeout: Unlimited")
+        else:
+            print(f"Inference Timeout: {timeout_value} seconds ({timeout_value/3600:.1f} hours)")
     print(f"Evaluation: {'DISABLED' if args.no_eval else 'ENABLED'}")
     print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
@@ -451,6 +461,7 @@ Examples:
     run_parser.add_argument('--context-length', type=str, metavar='K', help='Context length for LongCodeBench datasets (e.g., "32K", "128K", "1M" or integer)')
     run_parser.add_argument('--max-k', type=int, metavar='K', help='Maximum number of context files (k value) to include. Only instances with num_files <= max_k will be used.')
     run_parser.add_argument('--instance-id', type=str, metavar='ID', help='Specific instance ID to process. For tunable datasets, this will process all k-value variants of this instance.')
+    run_parser.add_argument('--timeout', type=int, metavar='SECONDS', help='Timeout for inference in seconds (default: 28800 = 8 hours). Use 0 for unlimited timeout.')
     
     # EVAL command
     eval_parser = subparsers.add_parser('eval', help='Evaluate past predictions')

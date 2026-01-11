@@ -18,7 +18,7 @@ from datasets import load_dataset
 from utils.longcodebench_loader import is_longcodebench_dataset
 
 class EnhancedBenchmarkRunner:
-    def __init__(self, model=None, backend="claude", longcodebench=False, context_length=None, max_k=None, instance_id=None):
+    def __init__(self, model=None, backend="claude", longcodebench=False, context_length=None, max_k=None, instance_id=None, timeout=None):
         self.base_dir = Path.cwd()
         self.log_file = self.base_dir / "benchmark_scores.log"
         self.predictions_dir = self.base_dir / "predictions"
@@ -30,6 +30,8 @@ class EnhancedBenchmarkRunner:
         self.context_length = context_length
         self.max_k = max_k
         self.instance_id = instance_id
+        # Default timeout: 8 hours (28800 seconds), or None for unlimited
+        self.timeout = timeout if timeout is not None else 28800
         
         # Create directories
         self.predictions_dir.mkdir(exist_ok=True)
@@ -102,7 +104,7 @@ class EnhancedBenchmarkRunner:
         
         try:
             start_time = time.time()
-            timeout_seconds = 7200  # 2 hours
+            timeout_seconds = self.timeout  # Use configured timeout (default: 8 hours)
             # Use Popen to stream output in real-time
             process = subprocess.Popen(
                 cmd,
@@ -116,14 +118,14 @@ class EnhancedBenchmarkRunner:
             # Print output in real-time with timeout handling
             output_lines = []
             timeout_reached = False
-            end_time = start_time + timeout_seconds
+            end_time = start_time + timeout_seconds if timeout_seconds is not None else float('inf')
             
             for line in iter(process.stdout.readline, ''):
                 current_time = time.time()
-                if current_time > end_time:
+                if timeout_seconds is not None and current_time > end_time:
                     timeout_reached = True
                     process.kill()
-                    print(f"\n❌ Inference timed out after {timeout_seconds} seconds")
+                    print(f"\n❌ Inference timed out after {timeout_seconds} seconds ({timeout_seconds/3600:.1f} hours)")
                     break
                 print(line, end='', flush=True)
                 output_lines.append(line)
@@ -496,14 +498,20 @@ def main():
                        help="Maximum number of context files (k value) to include. Only instances with num_files <= max_k will be used.")
     parser.add_argument("--instance-id", type=str, metavar="ID",
                        help="Specific instance ID to process. For tunable datasets, this will process all k-value variants of this instance.")
+    parser.add_argument("--timeout", type=int, metavar="SECONDS",
+                       help="Timeout for inference in seconds (default: 28800 = 8 hours). Use 0 for unlimited timeout.")
     
     args = parser.parse_args()
+    
+    # Handle timeout: 0 means unlimited (None), otherwise use provided value
+    timeout_value = None if (hasattr(args, 'timeout') and args.timeout == 0) else (args.timeout if hasattr(args, 'timeout') and args.timeout else None)
     
     runner = EnhancedBenchmarkRunner(
         longcodebench=args.longcodebench,
         context_length=args.context_length,
         max_k=args.max_k if hasattr(args, 'max_k') else None,
-        instance_id=args.instance_id if hasattr(args, 'instance_id') else None
+        instance_id=args.instance_id if hasattr(args, 'instance_id') else None,
+        timeout=timeout_value
     )
     
     print("="*60)
