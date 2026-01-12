@@ -51,16 +51,31 @@ class ScoreViewer:
         print("="*100)
         
         for entry in scores:
-            timestamp = entry.get("timestamp", "Unknown")[:19]
-            instances = entry.get("num_instances", 0)
-            gen_score = entry.get("generation_score", 0)
+            # Safely extract values with proper defaults
+            timestamp = str(entry.get("timestamp") or "Unknown")[:19]
+            instances = entry.get("num_instances")
+            gen_score = entry.get("generation_score")
             eval_score = entry.get("evaluation_score")
-            status = entry.get("evaluation_status", "unknown")
-            notes = entry.get("notes", "")[:30]
+            status = entry.get("evaluation_status") or "unknown"
+            notes = str(entry.get("notes") or "")[:30]
+            
+            # Convert to safe numeric types
+            try:
+                instances = int(instances) if instances is not None else 0
+            except (ValueError, TypeError):
+                instances = 0
+            
+            try:
+                gen_score = float(gen_score) if gen_score is not None else 0.0
+            except (ValueError, TypeError):
+                gen_score = 0.0
             
             # Format eval score
             if eval_score is not None:
-                eval_str = f"{eval_score:>9.1f}%"
+                try:
+                    eval_str = f"{float(eval_score):>9.1f}%"
+                except (ValueError, TypeError):
+                    eval_str = "      -   "
             else:
                 eval_str = "      -   "
             
@@ -72,9 +87,14 @@ class ScoreViewer:
             elif status == "skipped":
                 status_str = "- Skipped"
             else:
-                status_str = "? " + status[:10]
+                status_str = "? " + str(status)[:10]
             
-            print(f"{timestamp:<20} {instances:>10} {gen_score:>9.1f}% {eval_str} {status_str:<12} {notes}")
+            # Print with safe formatting
+            try:
+                print(f"{timestamp:<20} {instances:>10} {gen_score:>9.1f}% {eval_str} {status_str:<12} {notes}")
+            except Exception as e:
+                # Fallback for any unexpected errors
+                print(f"{timestamp:<20} {'ERROR':>10} {'ERROR':>10} {'ERROR':>10} {'ERROR':<12} {str(e)[:30]}")
         
         print("="*100)
     
@@ -95,14 +115,19 @@ class ScoreViewer:
         print(f"  - Pending evaluation: {len(pending)}")
         
         if evaluated:
-            gen_scores = [s.get("generation_score", 0) for s in evaluated]
+            gen_scores = [s.get("generation_score", 0) or 0 for s in evaluated]
             eval_scores = [s.get("evaluation_score", 0) for s in evaluated 
                           if s.get("evaluation_score") is not None]
             
-            print(f"\nGeneration Scores (patches created):")
-            print(f"  Average: {sum(gen_scores)/len(gen_scores):.1f}%")
-            print(f"  Min: {min(gen_scores):.1f}%")
-            print(f"  Max: {max(gen_scores):.1f}%")
+            # Convert to float safely
+            gen_scores = [float(g) if g is not None else 0.0 for g in gen_scores]
+            eval_scores = [float(e) if e is not None else 0.0 for e in eval_scores]
+            
+            if gen_scores:
+                print(f"\nGeneration Scores (patches created):")
+                print(f"  Average: {sum(gen_scores)/len(gen_scores):.1f}%")
+                print(f"  Min: {min(gen_scores):.1f}%")
+                print(f"  Max: {max(gen_scores):.1f}%")
             
             if eval_scores:
                 print(f"\nEvaluation Scores (issues fixed - REAL):")
@@ -111,27 +136,30 @@ class ScoreViewer:
                 print(f"  Max: {max(eval_scores):.1f}%")
                 
                 # Show average drop from generation to evaluation
-                avg_gen = sum(gen_scores)/len(gen_scores)
-                avg_eval = sum(eval_scores)/len(eval_scores)
-                drop = avg_gen - avg_eval
-                print(f"\nAverage drop from generation to evaluation: {drop:.1f}%")
-                if avg_gen == 0:
-                    print("No patches generated; success rate unavailable.")
-                else:
-                    print(f"Success rate: {avg_eval/avg_gen*100:.1f}% of generated patches actually work")
+                if gen_scores:
+                    avg_gen = sum(gen_scores)/len(gen_scores)
+                    avg_eval = sum(eval_scores)/len(eval_scores)
+                    drop = avg_gen - avg_eval
+                    print(f"\nAverage drop from generation to evaluation: {drop:.1f}%")
+                    if avg_gen == 0:
+                        print("No patches generated; success rate unavailable.")
+                    else:
+                        print(f"Success rate: {avg_eval/avg_gen*100:.1f}% of generated patches actually work")
         
         # Time statistics
-        all_gen_times = [s.get("generation_time", 0) for s in scores 
-                        if s.get("generation_time")]
-        all_eval_times = [s.get("evaluation_time", 0) for s in evaluated 
-                         if s.get("evaluation_time")]
+        all_gen_times = [s.get("generation_time", 0) or 0 for s in scores 
+                        if s.get("generation_time") is not None]
+        all_eval_times = [s.get("evaluation_time", 0) or 0 for s in evaluated 
+                         if s.get("evaluation_time") is not None]
         
         if all_gen_times:
+            all_gen_times = [float(t) for t in all_gen_times]
             print(f"\nGeneration times:")
             print(f"  Average: {sum(all_gen_times)/len(all_gen_times):.1f}s")
             print(f"  Total: {sum(all_gen_times):.1f}s")
         
         if all_eval_times:
+            all_eval_times = [float(t) for t in all_eval_times]
             print(f"\nEvaluation times:")
             print(f"  Average: {sum(all_eval_times)/len(all_eval_times):.1f}s")
             print(f"  Total: {sum(all_eval_times):.1f}s")
@@ -155,26 +183,35 @@ class ScoreViewer:
         
         print("\nRecent evaluation scores:")
         for entry in recent:
-            timestamp = entry.get("timestamp", "Unknown")[:10]
-            eval_score = entry.get("evaluation_score", 0)
-            instances = entry.get("num_instances", 0)
-            print(f"  {timestamp}: {eval_score:5.1f}% on {instances} instances")
+            timestamp = str(entry.get("timestamp", "Unknown"))[:10]
+            eval_score = entry.get("evaluation_score") or 0.0
+            instances = entry.get("num_instances") or 0
+            try:
+                eval_score = float(eval_score)
+                instances = int(instances)
+                print(f"  {timestamp}: {eval_score:5.1f}% on {instances} instances")
+            except (ValueError, TypeError):
+                print(f"  {timestamp}: N/A on {instances} instances")
         
         # Calculate trend
         if len(evaluated) >= 3:
             first_half = evaluated[:len(evaluated)//2]
             second_half = evaluated[len(evaluated)//2:]
             
-            first_avg = sum(e.get("evaluation_score", 0) for e in first_half) / len(first_half)
-            second_avg = sum(e.get("evaluation_score", 0) for e in second_half) / len(second_half)
+            first_scores = [float(e.get("evaluation_score", 0) or 0) for e in first_half]
+            second_scores = [float(e.get("evaluation_score", 0) or 0) for e in second_half]
             
-            trend = second_avg - first_avg
-            if trend > 0:
-                print(f"\n📈 Improving trend: +{trend:.1f}% from first to second half")
-            elif trend < 0:
-                print(f"\n📉 Declining trend: {trend:.1f}% from first to second half")
-            else:
-                print(f"\n➡️  Stable performance")
+            if first_scores and second_scores:
+                first_avg = sum(first_scores) / len(first_scores)
+                second_avg = sum(second_scores) / len(second_scores)
+                
+                trend = second_avg - first_avg
+                if trend > 0:
+                    print(f"\n📈 Improving trend: +{trend:.1f}% from first to second half")
+                elif trend < 0:
+                    print(f"\n📉 Declining trend: {trend:.1f}% from first to second half")
+                else:
+                    print(f"\n➡️  Stable performance")
     
     def export_to_csv(self, scores: List[Dict], filename: str):
         """Export scores to CSV file"""
@@ -220,7 +257,7 @@ class ScoreViewer:
         
         for timestamp, pred_file, instances in pending:
             filename = Path(pred_file).name if pred_file != "Unknown" else "Unknown"
-            print(f"  {timestamp[:19]}: {filename} ({instances} instances)")
+            print(f"  {str(timestamp)[:19]}: {filename} ({instances} instances)")
         
         print(f"\nTo evaluate these, run:")
         print(f"  python swe_bench.py eval --interactive")

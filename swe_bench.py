@@ -164,6 +164,7 @@ def run_command(args):
     
     print(f"\nTotal time: {total_time:.1f} seconds")
     print(f"Results logged to: {runner.log_file}")
+    print(f"Formatted summary saved to: {runner.summary_file}")
     
     return 0
 

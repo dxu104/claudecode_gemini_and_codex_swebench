@@ -21,6 +21,7 @@ class EnhancedBenchmarkRunner:
     def __init__(self, model=None, backend="claude", longcodebench=False, context_length=None, max_k=None, instance_id=None, timeout=None):
         self.base_dir = Path.cwd()
         self.log_file = self.base_dir / "benchmark_scores.log"
+        self.summary_file = self.base_dir / "benchmark_scores_summary.txt"
         self.predictions_dir = self.base_dir / "predictions"
         self.results_dir = self.base_dir / "results"
         self.eval_results_dir = self.base_dir / "evaluation_results"
@@ -59,17 +60,64 @@ class EnhancedBenchmarkRunner:
             "notes": notes
         }
         
-        # Append to log file
+        # Append to log file (JSON format)
         with open(self.log_file, 'a') as f:
             f.write(json.dumps(log_entry) + '\n')
         
+        # Append formatted summary to summary file
+        self._write_formatted_summary(log_entry, generation_score, evaluation_score, 
+                                     evaluation_status, generation_time, evaluation_time)
+        
         print(f"\n✅ Results logged to {self.log_file}")
+        print(f"✅ Formatted summary saved to {self.summary_file}")
         if evaluation_status == "completed":
             print(f"   Generation Score: {generation_score:.2f}% (patches created)")
             print(f"   Evaluation Score: {evaluation_score:.2f}% (issues fixed) ← REAL SCORE")
         else:
             print(f"   Generation Score: {generation_score:.2f}% (patches created)")
             print(f"   Evaluation: {evaluation_status}")
+    
+    def _write_formatted_summary(self, log_entry, generation_score, evaluation_score,
+                                evaluation_status, generation_time, evaluation_time):
+        """Write formatted summary to summary file"""
+        timestamp = log_entry.get("timestamp", "")
+        dataset = log_entry.get("dataset", "")
+        num_instances = log_entry.get("num_instances", 0)
+        model = log_entry.get("model") or "default"
+        backend = log_entry.get("backend", "unknown")
+        notes = log_entry.get("notes", "")
+        
+        with open(self.summary_file, 'a', encoding='utf-8') as f:
+            f.write("\n" + "="*80 + "\n")
+            f.write(f"BENCHMARK RUN SUMMARY - {timestamp}\n")
+            f.write("="*80 + "\n")
+            f.write(f"Dataset: {dataset}\n")
+            f.write(f"Backend: {backend}\n")
+            if model and model != "default":
+                f.write(f"Model: {model}\n")
+            f.write(f"Instances tested: {num_instances}\n")
+            f.write(f"\nGeneration Score: {generation_score:.2f}% (patches created)\n")
+            f.write(f"  Generation time: {generation_time:.1f}s\n")
+            
+            if evaluation_status == "completed":
+                f.write(f"\nEvaluation Score: {evaluation_score:.2f}% (issues fixed) ← REAL SCORE\n")
+                f.write(f"  Evaluation time: {evaluation_time:.1f}s\n")
+                f.write(f"\n🎯 Real Success Rate: {evaluation_score:.2f}%\n")
+            elif evaluation_status == "skipped":
+                f.write(f"\nEvaluation: SKIPPED (use without --skip-eval for real scores)\n")
+            else:
+                f.write(f"\nEvaluation: {evaluation_status.upper()}\n")
+            
+            total_time = generation_time + evaluation_time
+            f.write(f"\nTotal time: {total_time:.1f} seconds\n")
+            f.write(f"  Generation: {generation_time:.1f}s\n")
+            if evaluation_time > 0:
+                f.write(f"  Evaluation: {evaluation_time:.1f}s\n")
+            
+            if notes:
+                f.write(f"\nNotes: {notes}\n")
+            
+            f.write("="*80 + "\n")
             
     def run_inference(self, dataset_name, limit):
         """Run code model on the dataset"""
@@ -587,6 +635,7 @@ def main():
         print(f"  Evaluation: {evaluation_time:.1f}s")
     
     print(f"\nResults logged to: {runner.log_file}")
+    print(f"Formatted summary saved to: {runner.summary_file}")
     
     # Show recent scores
     print("\n📊 Recent runs:")
