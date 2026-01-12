@@ -13,12 +13,15 @@ from typing import List, Dict
 
 class ScoreViewer:
     def __init__(self):
-        self.log_file = Path("benchmark_scores.log")
+        self.base_dir = Path.cwd()
+        self.log_file = self.base_dir / "benchmark_scores.log"
+        self.predictions_dir = self.base_dir / "predictions"
+        self.eval_results_dir = self.base_dir / "evaluation_results"
         
     def load_scores(self) -> List[Dict]:
         """Load all scores from log file"""
         if not self.log_file.exists():
-            print(f"No log file found at {self.log_file}")
+            print(f"No log file found at {self.log_file.absolute()}")
             return []
         
         scores = []
@@ -262,6 +265,164 @@ class ScoreViewer:
         print(f"\nTo evaluate these, run:")
         print(f"  python swe_bench.py eval --interactive")
         print(f"  (then select 'pending')")
+    
+    def analyze_k_value_breakdown(self, scores: List[Dict], timestamp: str = None, pred_file: str = None):
+        """Analyze success rate by k-value (num_files) for a specific benchmark run"""
+        from collections import defaultdict
+        import glob
+        
+        # Find the target run
+        target_entry = None
+        if timestamp:
+            for entry in scores:
+                if str(entry.get("timestamp", ""))[:19] == timestamp[:19]:
+                    target_entry = entry
+                    break
+        elif pred_file:
+            for entry in scores:
+                if entry.get("prediction_file") == pred_file or Path(entry.get("prediction_file", "")).name == Path(pred_file).name:
+                    target_entry = entry
+                    break
+        else:
+            # Use the most recent evaluated run
+            evaluated = [s for s in scores if s.get("evaluation_status") == "completed"]
+            if evaluated:
+                evaluated.sort(key=lambda x: x.get("timestamp", ""))
+                target_entry = evaluated[-1]
+        
+        if not target_entry:
+            print("\n❌ No matching benchmark run found.")
+            if timestamp:
+                print(f"   Searched for timestamp: {timestamp}")
+            elif pred_file:
+                print(f"   Searched for prediction file: {pred_file}")
+            else:
+                print("   No evaluated runs found.")
+            return
+        
+        pred_file_path = target_entry.get("prediction_file")
+        if not pred_file_path or pred_file_path == "None":
+            print(f"\n❌ No prediction file found for this run.")
+            print(f"   Timestamp: {target_entry.get('timestamp')}")
+            return
+        
+        # Resolve prediction file path
+        if not Path(pred_file_path).is_absolute():
+            pred_file_path = self.predictions_dir / Path(pred_file_path).name
+        else:
+            pred_file_path = Path(pred_file_path)
+        
+        if not pred_file_path.exists():
+            print(f"\n❌ Prediction file not found: {pred_file_path}")
+            return
+        
+        # Load predictions
+        predictions = []
+        try:
+            with open(pred_file_path, 'r') as f:
+                for line in f:
+                    try:
+                        pred = json.loads(line.strip())
+                        predictions.append(pred)
+                    except json.JSONDecodeError:
+                        continue
+        except Exception as e:
+            print(f"\n❌ Error loading predictions: {e}")
+            return
+        
+        if not predictions:
+            print(f"\n❌ No predictions found in file: {pred_file_path}")
+            return
+        
+        # Group by k-value (num_files)
+        k_value_stats = defaultdict(lambda: {"total": 0, "generated": 0, "evaluated": 0, "passed": 0})
+        
+        for pred in predictions:
+            k_value = pred.get("num_files", 0)
+            k_value_stats[k_value]["total"] += 1
+            if pred.get("patch"):
+                k_value_stats[k_value]["generated"] += 1
+        
+        # Try to load evaluation results
+        model_name = target_entry.get("model") or "unknown"
+        backend = target_entry.get("backend") or "unknown"
+        
+        # Look for evaluation result files
+        eval_files = list(self.eval_results_dir.glob(f"*{model_name}*.json")) if self.eval_results_dir.exists() else []
+        if not eval_files:
+            eval_files = list(self.eval_results_dir.glob(f"*.json")) if self.eval_results_dir.exists() else []
+        
+        eval_data_by_k = {}
+        for eval_file in eval_files:
+            try:
+                with open(eval_file, 'r') as f:
+                    eval_data = json.load(f)
+                    # Try to extract k-value from filename or data
+                    filename = eval_file.name
+                    # Look for pattern like _k19.json or k=19
+                    import re
+                    k_match = re.search(r'[kK][_=]?(\d+)', filename)
+                    if k_match:
+                        k_val = int(k_match.group(1))
+                        eval_data_by_k[k_val] = eval_data
+            except Exception:
+                continue
+        
+        # Update evaluation stats
+        for k_value, eval_data in eval_data_by_k.items():
+            if k_value in k_value_stats:
+                results = eval_data.get("results", {})
+                k_value_stats[k_value]["evaluated"] = len(results)
+                k_value_stats[k_value]["passed"] = sum(1 for r in results.values() if r.get("status") == "RESOLVED")
+        
+        # Display results
+        print("\n" + "="*80)
+        print("K-VALUE (num_files) BREAKDOWN ANALYSIS")
+        print("="*80)
+        print(f"Run timestamp: {target_entry.get('timestamp')}")
+        print(f"Prediction file: {Path(pred_file_path).name}")
+        print(f"Total predictions: {len(predictions)}")
+        print()
+        print(f"{'K-Value':<10} {'Total':>8} {'Generated':>10} {'Gen Rate':>10} {'Evaluated':>10} {'Passed':>8} {'Eval Rate':>10}")
+        print("-"*80)
+        
+        sorted_k_values = sorted(k_value_stats.keys())
+        for k_value in sorted_k_values:
+            stats = k_value_stats[k_value]
+            total = stats["total"]
+            generated = stats["generated"]
+            evaluated = stats["evaluated"]
+            passed = stats["passed"]
+            
+            gen_rate = (generated / total * 100) if total > 0 else 0.0
+            eval_rate = (passed / evaluated * 100) if evaluated > 0 else 0.0
+            
+            eval_str = f"{evaluated:>10}" if evaluated > 0 else "      N/A"
+            passed_str = f"{passed:>8}" if evaluated > 0 else "     N/A"
+            eval_rate_str = f"{eval_rate:>9.1f}%" if evaluated > 0 else "      N/A"
+            
+            print(f"{k_value:<10} {total:>8} {generated:>10} {gen_rate:>9.1f}% {eval_str} {passed_str} {eval_rate_str}")
+        
+        print("-"*80)
+        
+        # Summary
+        total_all = sum(s["total"] for s in k_value_stats.values())
+        generated_all = sum(s["generated"] for s in k_value_stats.values())
+        evaluated_all = sum(s["evaluated"] for s in k_value_stats.values())
+        passed_all = sum(s["passed"] for s in k_value_stats.values())
+        
+        if total_all > 0:
+            overall_gen_rate = generated_all / total_all * 100
+            print(f"{'Overall':<10} {total_all:>8} {generated_all:>10} {overall_gen_rate:>9.1f}%", end="")
+            if evaluated_all > 0:
+                overall_eval_rate = passed_all / evaluated_all * 100
+                print(f" {evaluated_all:>10} {passed_all:>8} {overall_eval_rate:>9.1f}%")
+            else:
+                print(f" {'N/A':>10} {'N/A':>8} {'N/A':>10}")
+        
+        if not eval_data_by_k:
+            print(f"\n⚠️  Note: No evaluation results found in {self.eval_results_dir}")
+            print("   Evaluation rates are not available.")
 
 def main():
     parser = argparse.ArgumentParser(
@@ -280,6 +441,12 @@ def main():
                        help="Show pending evaluations")
     parser.add_argument("--last", type=int, metavar="N",
                        help="Show only last N entries")
+    parser.add_argument("--k-breakdown", action="store_true",
+                       help="Analyze success rate by k-value (num_files)")
+    parser.add_argument("--timestamp", type=str, metavar="TIMESTAMP",
+                       help="Timestamp for k-value breakdown (format: YYYY-MM-DD HH:MM:SS)")
+    parser.add_argument("--pred-file", type=str, metavar="FILE",
+                       help="Prediction file for k-value breakdown")
     
     args = parser.parse_args()
     
@@ -316,6 +483,11 @@ def main():
     # Export if requested
     if args.export:
         viewer.export_to_csv(scores, args.export)
+    
+    # K-value breakdown if requested
+    if args.k_breakdown:
+        viewer.analyze_k_value_breakdown(scores, timestamp=args.timestamp, pred_file=args.pred_file)
+        return
     
     # Quick summary
     evaluated = len([s for s in scores if s.get("evaluation_status") == "completed"])
